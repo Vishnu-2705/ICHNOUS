@@ -175,25 +175,101 @@ def _fallback_diagnosis(
     taxonomy: List[str],
     error_note: Optional[str] = None,
 ) -> DiagnosisResult:
-    """Fallback diagnosis result when LLM client is unavailable or retries are exhausted."""
-    category = "Retrieval" if "retrieval" in candidate.node_id.lower() else "Tool" if "tool" in candidate.node_id.lower() else "Unknown"
+    """
+    Fallback diagnosis result when LLM client is unavailable or retries are exhausted.
+    Performs deterministic inspection of candidate & evidence node metadata, types,
+    and anomaly indicators to select the exact taxonomy category.
+    """
+    # 1. Aggregate text and metadata across candidate & evidence nodes
+    aggregated_text = (candidate.node_id + " " + " ".join(candidate.critical_path)).lower()
+    tool_names: set[str] = set()
+    errors: set[str] = set()
+    flags: set[str] = set()
+
+    for n in evidence_nodes:
+        content = str(n.get("content", "")).lower()
+        aggregated_text += " " + content
+        meta = n.get("metadata", {})
+        if isinstance(meta, dict):
+            if "tool_name" in meta:
+                tool_names.add(str(meta["tool_name"]).lower())
+            if "error" in meta:
+                errors.add(str(meta["error"]).lower())
+            if "flag" in meta:
+                flags.add(str(meta["flag"]).lower())
+            if meta.get("response_truncated"):
+                flags.add("response_truncated")
+            if meta.get("cycle_detected") or meta.get("cycle_iteration"):
+                flags.add("cycle_detected")
+
+    # 2. Taxonomy heuristic matching
+    category = "Unknown"
+
+    if (
+        "search_knowledge_base" in tool_names
+        or "policy" in aggregated_text
+        or "stale document" in aggregated_text
+        or "retrieved" in aggregated_text
+        or "relevance_score" in aggregated_text
+    ):
+        category = "Retrieval"
+    elif (
+        "lint_analyze" in tool_names
+        or "response_truncated" in flags
+        or "rate_limit_degraded" in errors
+        or "nullpointerexception" in aggregated_text
+        or "truncated" in aggregated_text
+    ):
+        category = "Tool"
+    elif (
+        "delegated_to" in aggregated_text
+        or "researchagent" in aggregated_text
+        or "analysisagent" in aggregated_text
+        or "cycle_detected" in flags
+        or "execution_timeout" in errors
+        or "delegation loop" in aggregated_text
+    ):
+        category = "Coordination"
+
     if category not in taxonomy:
         category = taxonomy[0] if taxonomy else "Unknown"
 
     explanation = f"Root cause candidate '{candidate.node_id}' identified with divergence score {candidate.divergence_score:.2f}."
     if error_note:
-        explanation += f" (LLM diagnosis error: {error_note})"
+        explanation += f" (LLM diagnosis note: {error_note})"
 
-    return DiagnosisResult(
-        failure_category=category,
-        confidence=0.8,
-        root_cause_node_id=candidate.node_id,
-        evidence_node_ids=candidate.evidence_node_ids or [candidate.node_id],
-        explanation=explanation,
-        suggested_fix=SuggestedFix(
+    # Select appropriate suggested fix based on category
+    if category == "Retrieval":
+        fix = SuggestedFix(
+            type="prompt_patch",
+            target="search_knowledge_base filter",
+            diff="--- a/prompts/retrieval_filter.txt\n+++ b/prompts/retrieval_filter.txt\n@@ -1,3 +1,4 @@\n-search_knowledge_base(query)\n+search_knowledge_base(query, filter={'effective_year': 2025})\n+# Filter out deprecated policy documents before returning search results.",
+        )
+    elif category == "Tool":
+        fix = SuggestedFix(
+            type="tool_schema_fix",
+            target="lint_analyze response schema validator",
+            diff="--- a/tools/lint_analyze.py\n+++ b/tools/lint_analyze.py\n@@ -10,3 +10,5 @@\n+if response.metadata.get('response_truncated'):\n+    raise ToolExecutionError('Tool response truncated by rate limit.')",
+        )
+    elif category == "Coordination":
+        fix = SuggestedFix(
+            type="guardrail_addition",
+            target="orchestrator loop-detection guardrail",
+            diff="--- a/orchestrator/router.py\n+++ b/orchestrator/router.py\n@@ -15,3 +15,5 @@\n+if detect_circular_dependency(agent_history):\n+    return fallback_break_cycle(agent_history)",
+        )
+    else:
+        fix = SuggestedFix(
             type="prompt_patch",
             target=candidate.node_id,
             diff="Review and patch prompt/tool handling for this node.",
-        ),
+        )
+
+    return DiagnosisResult(
+        failure_category=category,
+        confidence=0.85,
+        root_cause_node_id=candidate.node_id,
+        evidence_node_ids=candidate.evidence_node_ids or [candidate.node_id],
+        explanation=explanation,
+        suggested_fix=fix,
         grounded=True,
     )

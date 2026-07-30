@@ -119,29 +119,48 @@ def test_diagnose_with_llm_retry_on_malformed_json():
 
 def test_fallback_when_retries_exhausted():
     candidate = RootCauseCandidate(
-        node_id="node_err",
+        node_id="node_2",
         divergence_score=0.5,
-        evidence_node_ids=["node_err"],
-        critical_path=["node_err"],
+        evidence_node_ids=["node_2"],
+        critical_path=["node_1", "node_2"],
     )
+    evidence_nodes = [
+        {"id": "node_2", "type": "tool_call", "content": "search_knowledge_base('stale policy')", "metadata": {"tool_name": "search_knowledge_base"}},
+    ]
 
     def broken_llm(system: str, user: str) -> str:
         return "ALWAYS INVALID NON-JSON"
 
     result = diagnose_with_llm(
         candidate=candidate,
-        evidence_nodes=[],
+        evidence_nodes=evidence_nodes,
         taxonomy=TAXONOMY_LIST,
         llm_client=broken_llm,
         max_retries=1,
     )
 
     assert isinstance(result, DiagnosisResult)
-    assert result.root_cause_node_id == "node_err"
+    assert result.root_cause_node_id == "node_2"
+    assert result.failure_category == "Retrieval"
+
+
+def test_fallback_diagnosis_taxonomy_mapping():
+    # Test Tool fallback
+    tool_candidate = RootCauseCandidate(node_id="node_5", divergence_score=0.6, evidence_node_ids=["node_5"], critical_path=["node_5"])
+    tool_evidence = [{"id": "node_5", "type": "tool_call", "content": "lint_analyze()", "metadata": {"tool_name": "lint_analyze", "response_truncated": True}}]
+    tool_result = diagnose_with_llm(tool_candidate, tool_evidence, taxonomy=TAXONOMY_LIST, llm_client=lambda s, u: "INVALID")
+    assert tool_result.failure_category == "Tool"
+
+    # Test Coordination fallback
+    coord_candidate = RootCauseCandidate(node_id="node_3", divergence_score=0.7, evidence_node_ids=["node_3"], critical_path=["node_3"])
+    coord_evidence = [{"id": "node_3", "type": "observation", "content": "Delegation loop timeout between ResearchAgent and AnalysisAgent", "metadata": {"error": "execution_timeout"}}]
+    coord_result = diagnose_with_llm(coord_candidate, coord_evidence, taxonomy=TAXONOMY_LIST, llm_client=lambda s, u: "INVALID")
+    assert coord_result.failure_category == "Coordination"
 
 
 if __name__ == "__main__":
     test_diagnose_with_llm_valid_json()
     test_diagnose_with_llm_retry_on_malformed_json()
     test_fallback_when_retries_exhausted()
+    test_fallback_diagnosis_taxonomy_mapping()
     print("All LLM Integration unit tests passed successfully!")

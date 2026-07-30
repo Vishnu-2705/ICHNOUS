@@ -2,6 +2,7 @@
 Traces API routes module for TraceMind.
 """
 
+import asyncio
 from typing import Any, Dict, List
 from fastapi import APIRouter, HTTPException
 
@@ -40,6 +41,10 @@ except ImportError:
 
 router = APIRouter(prefix="/traces", tags=["traces"])
 
+# In-memory diagnosis and regression test caches per AGENTS.md (USE_CACHED_DIAGNOSES)
+_DIAGNOSIS_CACHE: Dict[str, FullDiagnosisResponse] = {}
+_REGRESSION_CACHE: Dict[str, RegressionTest] = {}
+
 
 def _serialize_graph(
     g,
@@ -47,18 +52,25 @@ def _serialize_graph(
     evidence_ids: List[str] = None,
     critical_path: List[str] = None,
 ) -> Dict[str, Any]:
+    """
+    Serialize graph elements for API response matching AGENTS.md §10.
+    Includes both source/target and from/to, as well as boolean flags and string highlights.
+    """
     evidence_set = set(evidence_ids or [])
     critical_set = set(critical_path or [])
     nodes_list = []
     for nid in g.nodes:
         data = g.nodes[nid]
+        is_root = nid == root_cause_id
+        is_evidence = nid in evidence_set
+        is_critical = nid in critical_set
         highlight = (
             "root_cause"
-            if nid == root_cause_id
+            if is_root
             else "evidence"
-            if nid in evidence_set
+            if is_evidence
             else "critical_path"
-            if nid in critical_set
+            if is_critical
             else "normal"
         )
         nodes_list.append(
@@ -69,6 +81,9 @@ def _serialize_graph(
                 "metadata": data.get("metadata", {}),
                 "timestamp": data.get("timestamp", ""),
                 "highlight": highlight,
+                "is_root_cause": is_root,
+                "is_evidence": is_evidence,
+                "is_critical_path": is_critical,
             }
         )
     edges_list = []
@@ -77,9 +92,13 @@ def _serialize_graph(
         is_critical = src in critical_set and dst in critical_set
         edges_list.append(
             {
+                "source": src,
+                "target": dst,
                 "from": src,
                 "to": dst,
                 "highlight": "evidence" if is_evidence else "critical_path" if is_critical else "normal",
+                "is_evidence": is_evidence,
+                "is_critical_path": is_critical,
             }
         )
     return {"nodes": nodes_list, "edges": edges_list}
@@ -124,11 +143,15 @@ async def diagnose_trace(trace_id: str) -> FullDiagnosisResponse:
     POST /traces/{id}/diagnose
     Runs causal graph construction, anomaly detection, backward causal walk,
     and LLM/rule-based diagnosis, returning FullDiagnosisResponse.
+    Uses in-memory cache if available.
     """
     try:
         trace = load_fixture_trace(trace_id)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"Trace '{trace_id}' not found.")
+
+    if trace.id in _DIAGNOSIS_CACHE:
+        return _DIAGNOSIS_CACHE[trace.id]
 
     g = build_graph(trace)
     anomalies = detect_anomalies(g)
@@ -146,7 +169,10 @@ async def diagnose_trace(trace_id: str) -> FullDiagnosisResponse:
         if g.has_node(nid)
     ]
 
-    diagnosis_result = diagnose_with_llm(root_cause_candidate, evidence_nodes, g=g)
+    # Offload synchronous LLM call to thread to prevent blocking event loop
+    diagnosis_result = await asyncio.to_thread(
+        diagnose_with_llm, root_cause_candidate, evidence_nodes, g=g
+    )
 
     graph_data = _serialize_graph(
         g,
@@ -155,12 +181,14 @@ async def diagnose_trace(trace_id: str) -> FullDiagnosisResponse:
         critical_path=critical_path,
     )
 
-    return FullDiagnosisResponse(
+    response = FullDiagnosisResponse(
         diagnosis=diagnosis_result,
         graph=graph_data,
         anomalies=anomalies,
         critical_path=critical_path,
     )
+    _DIAGNOSIS_CACHE[trace.id] = response
+    return response
 
 
 @router.post("/{trace_id}/regression-test", response_model=RegressionTest)
@@ -168,11 +196,23 @@ async def generate_regression_test_endpoint(trace_id: str) -> RegressionTest:
     """
     POST /traces/{id}/regression-test
     Generates a regression test artifact for the specified trace.
+    Uses in-memory cache if available.
     """
     try:
         trace = load_fixture_trace(trace_id)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"Trace '{trace_id}' not found.")
+
+    if trace.id in _REGRESSION_CACHE:
+        return _REGRESSION_CACHE[trace.id]
+
+    # Utilize cached diagnosis response if available to prevent duplicate LLM calls
+    if trace.id in _DIAGNOSIS_CACHE:
+        full_diag = _DIAGNOSIS_CACHE[trace.id]
+        g = build_graph(trace)
+        regression_test = generate_regression_test(trace, full_diag.diagnosis, g)
+        _REGRESSION_CACHE[trace.id] = regression_test
+        return regression_test
 
     g = build_graph(trace)
     anomalies = detect_anomalies(g)
@@ -190,6 +230,9 @@ async def generate_regression_test_endpoint(trace_id: str) -> RegressionTest:
         if g.has_node(nid)
     ]
 
-    diagnosis_result = diagnose_with_llm(root_cause_candidate, evidence_nodes, g=g)
+    diagnosis_result = await asyncio.to_thread(
+        diagnose_with_llm, root_cause_candidate, evidence_nodes, g=g
+    )
     regression_test = generate_regression_test(trace, diagnosis_result, g)
+    _REGRESSION_CACHE[trace.id] = regression_test
     return regression_test

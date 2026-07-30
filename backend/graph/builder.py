@@ -42,6 +42,11 @@ def build_graph(trace: Trace) -> nx.DiGraph:
         for upstream_id in node.reads_from:
             if upstream_id in node_ids:
                 g.add_edge(upstream_id, node.id)
+            else:
+                meta = g.nodes[node.id].setdefault("metadata", {})
+                dangling = meta.setdefault("dangling_reads_from", [])
+                if upstream_id not in dangling:
+                    dangling.append(upstream_id)
 
     return g
 

@@ -130,6 +130,18 @@ def detect_anomalies(g: nx.DiGraph) -> List[AnomalyFlag]:
                 )
             )
 
+        # 7. Dangling Reads From References
+        if meta.get("dangling_reads_from"):
+            dangling = ", ".join(meta["dangling_reads_from"])
+            anomalies.append(
+                AnomalyFlag(
+                    node_id=node_id,
+                    anomaly_type="dangling_reference",
+                    details=f"Node references unresolvable reads_from ID(s): {dangling}",
+                    severity_score=0.6,
+                )
+            )
+
     return anomalies
 
 
@@ -303,8 +315,8 @@ def backward_walk(
     Walk backward from the failure node along the critical path to find the EARLIEST
     meaningful divergence (root cause).
 
-    Chooses the earliest upstream node where divergence is high and downstream nodes
-    propagate the error. Never simply selects the node closest to failure.
+    Chooses the earliest upstream node where divergence occurs and downstream nodes
+    propagate the error cascade per AGENTS.md §8.4.
     """
     if not g.nodes:
         return RootCauseCandidate(
@@ -325,8 +337,8 @@ def backward_walk(
     for nid in critical_path:
         divergences[nid] = compute_divergence(g, nid, anomalies)
 
-    # Candidates: (node_id, divergence_score, causal_distance)
-    candidates: List[Tuple[str, float, int]] = []
+    # Candidates: (node_id, divergence_score, causal_distance, downstream_normal)
+    candidates: List[Tuple[str, float, int, bool]] = []
 
     # Iterate through critical path (excluding the failure node itself)
     for idx in range(len(critical_path) - 1):
@@ -334,22 +346,23 @@ def backward_walk(
         div = divergences[nid]
 
         if div >= DIVERGENCE_THRESHOLD:
-            # Check if downstream nodes are propagating (low divergence or reasoning)
+            # Check if downstream nodes are propagating (reasoning/observation propagation)
             downstream_normal = True
             for downstream_idx in range(idx + 1, len(critical_path) - 1):
                 downstream_nid = critical_path[downstream_idx]
-                if divergences[downstream_nid] > NORMAL_THRESHOLD:
+                # If a downstream node introduces a whole new independent error, downstream_normal is False
+                if divergences[downstream_nid] > DIVERGENCE_THRESHOLD + 0.3:
                     downstream_normal = False
                     break
 
             # Distance from failure (higher = more upstream = earliest divergence)
             causal_distance = len(critical_path) - 1 - idx
-            candidates.append((nid, div, causal_distance))
+            candidates.append((nid, div, causal_distance, downstream_normal))
 
     if not candidates:
         # Fallback: pick node with highest divergence that isn't failure node
         scored = [
-            (nid, divergences[nid], len(critical_path) - 1 - i)
+            (nid, divergences[nid], len(critical_path) - 1 - i, True)
             for i, nid in enumerate(critical_path[:-1])
             if divergences[nid] > 0
         ]
@@ -357,11 +370,24 @@ def backward_walk(
             candidates = scored
         else:
             # Absolute fallback: first node on critical path
-            candidates = [(critical_path[0], 0.0, len(critical_path) - 1)]
+            candidates = [(critical_path[0], 0.0, len(critical_path) - 1, True)]
 
-    # Rank: highest divergence first, then most upstream (highest causal_distance)
-    candidates.sort(key=lambda x: (x[1], x[2]), reverse=True)
-    best_id, best_div, _ = candidates[0]
+    # Rank per AGENTS.md §8.4:
+    # 1. Prefer downstream_normal == True (propagation cascade)
+    # 2. Prefer earliest upstream divergence (highest causal_distance) for equal or primary divergence
+    # 3. Primary divergence score
+    def ranking_key(item: Tuple[str, float, int, bool]):
+        nid, div_score, causal_dist, is_downstream_normal = item
+        # If it's the cycle origin or primary divergence, upstream position is primary
+        is_cycle_origin = any(
+            a.node_id == nid and a.anomaly_type == "cycle" for a in anomalies
+        )
+        if is_cycle_origin:
+            return (2.0, causal_dist, div_score)
+        return (1.0 if is_downstream_normal else 0.0, div_score, causal_dist)
+
+    candidates.sort(key=ranking_key, reverse=True)
+    best_id, best_div, _, _ = candidates[0]
 
     evidence_ids = _extract_evidence(g, best_id, critical_path)
 

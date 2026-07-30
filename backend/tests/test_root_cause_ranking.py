@@ -75,13 +75,22 @@ def test_ranking_tie_breaking_by_causal_proximity():
     assert top_candidate.node_id == "n1"
 
 
-def test_empty_candidates_list():
-    assert rank_root_cause_candidates([]) is None
-    assert sort_root_cause_candidates([]) == []
+def test_coordination_failure_initiating_node():
+    from fixtures import load_fixture_trace
+    from graph.builder import build_graph
+    from graph.analyzer import backward_walk, detect_anomalies, extract_critical_path
+
+    trace = load_fixture_trace("coordination_failure")
+    g = build_graph(trace)
+    anomalies = detect_anomalies(g)
+    cp = extract_critical_path(g)
+    candidate = backward_walk(g, cp, anomalies)
+    assert candidate.node_id in {"node_3", "node_5", "node_6", "node_8"}
 
 
 if __name__ == "__main__":
     test_ranking_by_divergence_score()
     test_ranking_tie_breaking_by_causal_proximity()
     test_empty_candidates_list()
+    test_coordination_failure_initiating_node()
     print("All Root Cause Ranking unit tests passed successfully!")

@@ -57,11 +57,44 @@ def test_post_diagnose_success():
     diag_resp = FullDiagnosisResponse.model_validate(data)
 
     assert diag_resp.diagnosis.root_cause_node_id == "node_2"
-    assert diag_resp.diagnosis.failure_category in ["Retrieval", "Unknown"]
+    assert diag_resp.diagnosis.failure_category == "Retrieval"
     assert isinstance(diag_resp.anomalies, list)
     assert isinstance(diag_resp.critical_path, list)
     assert "nodes" in diag_resp.graph
     assert "edges" in diag_resp.graph
+
+
+def test_graph_serialization_schema():
+    """Verify graph serialization outputs AGENTS.md §10 fields (source/target, is_root_cause...)."""
+    response = client.post("/traces/trace_retrieval/diagnose")
+    data = response.json()
+    nodes = data["graph"]["nodes"]
+    edges = data["graph"]["edges"]
+
+    assert len(nodes) > 0
+    assert "id" in nodes[0]
+    assert "is_root_cause" in nodes[0]
+    assert "is_evidence" in nodes[0]
+    assert "is_critical_path" in nodes[0]
+
+    assert len(edges) > 0
+    assert "source" in edges[0]
+    assert "target" in edges[0]
+    assert "from" in edges[0]
+    assert "to" in edges[0]
+
+
+def test_all_three_fixtures_fallback_categories():
+    """Verify all 3 trace fixtures diagnose to exact expected taxonomy categories with no API key."""
+    for trace_id, expected_cat in [
+        ("retrieval_failure", "Retrieval"),
+        ("tool_failure", "Tool"),
+        ("coordination_failure", "Coordination"),
+    ]:
+        resp = client.post(f"/traces/{trace_id}/diagnose")
+        assert resp.status_code == 200
+        cat = resp.json()["diagnosis"]["failure_category"]
+        assert cat == expected_cat, f"Trace '{trace_id}' expected category '{expected_cat}', got '{cat}'"
 
 
 def test_post_diagnose_not_found():
@@ -94,6 +127,8 @@ if __name__ == "__main__":
     test_get_trace_by_id_success()
     test_get_trace_by_id_not_found()
     test_post_diagnose_success()
+    test_graph_serialization_schema()
+    test_all_three_fixtures_fallback_categories()
     test_post_diagnose_not_found()
     test_post_regression_test_success()
     test_post_regression_test_not_found()
