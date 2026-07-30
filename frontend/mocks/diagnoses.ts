@@ -1,7 +1,7 @@
 import {
   FullDiagnosisResponse,
   RegressionTest,
-} from "../types/tracemind";
+} from "../src/types/tracemind";
 
 export const MOCK_DIAGNOSES: Record<string, FullDiagnosisResponse> = {
   retrieval_failure: {

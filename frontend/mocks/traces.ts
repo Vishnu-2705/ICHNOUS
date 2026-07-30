@@ -1,4 +1,4 @@
-import { Trace, TraceSummary } from "../types/tracemind";
+import { Trace, TraceSummary } from "../src/types/tracemind";
 
 export const MOCK_TRACE_SUMMARIES: TraceSummary[] = [
   {
