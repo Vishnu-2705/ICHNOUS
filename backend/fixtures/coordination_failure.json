@@ -1,0 +1,174 @@
+{
+  "id": "trace_coordination",
+  "name": "Coordination Failure — Delegation Loop",
+  "description": "A multi-agent research system enters a delegation loop: ResearchAgent and AnalysisAgent each require the other's output as a precondition, creating a cycle that times out.",
+  "expected_failure_category": "Coordination",
+  "nodes": [
+    {
+      "id": "node_1",
+      "type": "plan",
+      "timestamp": "2025-07-30T11:00:00Z",
+      "content": "Task: Research competitor pricing for Q3 report and produce a summary with market context. Plan: (1) Gather raw pricing data, (2) Analyze market context, (3) Synthesize into report.",
+      "metadata": {
+        "latency_ms": 350
+      },
+      "reads_from": []
+    },
+    {
+      "id": "node_2",
+      "type": "delegation",
+      "timestamp": "2025-07-30T11:00:01Z",
+      "content": "Delegating to ResearchAgent: 'Gather current competitor pricing data for cloud compute services (AWS, GCP, Azure) — include per-hour and reserved instance pricing.'",
+      "metadata": {
+        "delegated_to": "ResearchAgent",
+        "latency_ms": 200
+      },
+      "reads_from": [
+        "node_1"
+      ]
+    },
+    {
+      "id": "node_3",
+      "type": "observation",
+      "timestamp": "2025-07-30T11:00:15Z",
+      "content": "ResearchAgent returned partial results: collected raw pricing tables from AWS and GCP, but flagged: 'Azure pricing requires market segment analysis to normalize — need market analysis context before I can produce comparable figures.'",
+      "metadata": {
+        "source_agent": "ResearchAgent",
+        "latency_ms": 14000,
+        "completeness": 0.6,
+        "flag": "needs_market_context"
+      },
+      "reads_from": [
+        "node_2"
+      ]
+    },
+    {
+      "id": "node_4",
+      "type": "reasoning",
+      "timestamp": "2025-07-30T11:00:16Z",
+      "content": "ResearchAgent needs market context to normalize Azure pricing. I should delegate the market analysis first, then re-request the complete pricing data.",
+      "metadata": {
+        "latency_ms": 280
+      },
+      "reads_from": [
+        "node_3"
+      ]
+    },
+    {
+      "id": "node_5",
+      "type": "delegation",
+      "timestamp": "2025-07-30T11:00:17Z",
+      "content": "Delegating to AnalysisAgent: 'Perform market segment analysis for cloud compute services to provide context for normalizing competitor pricing.'",
+      "metadata": {
+        "delegated_to": "AnalysisAgent",
+        "latency_ms": 190
+      },
+      "reads_from": [
+        "node_4"
+      ]
+    },
+    {
+      "id": "node_6",
+      "type": "observation",
+      "timestamp": "2025-07-30T11:00:30Z",
+      "content": "AnalysisAgent returned: 'Unable to complete market segment analysis without raw pricing data as input. I need the competitor pricing data to identify segments and compute market shares. Please provide pricing data first.'",
+      "metadata": {
+        "source_agent": "AnalysisAgent",
+        "latency_ms": 13000,
+        "completeness": 0.0,
+        "flag": "needs_pricing_data"
+      },
+      "reads_from": [
+        "node_5"
+      ]
+    },
+    {
+      "id": "node_7",
+      "type": "reasoning",
+      "timestamp": "2025-07-30T11:00:31Z",
+      "content": "AnalysisAgent needs pricing data to do the analysis, but ResearchAgent needs the analysis to complete pricing. I'll re-send the partial pricing data we have to AnalysisAgent... actually, let me re-request full data from ResearchAgent with clearer instructions.",
+      "metadata": {
+        "latency_ms": 320
+      },
+      "reads_from": [
+        "node_3",
+        "node_6"
+      ]
+    },
+    {
+      "id": "node_8",
+      "type": "delegation",
+      "timestamp": "2025-07-30T11:00:32Z",
+      "content": "Delegating to ResearchAgent: 'Provide complete competitor pricing for all three providers (AWS, GCP, Azure). For Azure, provide raw numbers even without market normalization — we will normalize later.'",
+      "metadata": {
+        "delegated_to": "ResearchAgent",
+        "latency_ms": 210,
+        "cycle_iteration": 2
+      },
+      "reads_from": [
+        "node_7"
+      ]
+    },
+    {
+      "id": "node_9",
+      "type": "observation",
+      "timestamp": "2025-07-30T11:00:46Z",
+      "content": "ResearchAgent returned: 'I have AWS and GCP pricing. For Azure, the public pricing page shows tiered pricing that varies by commitment level. Without market segment context, I cannot determine which tiers are comparable to AWS/GCP offerings. Still need market analysis.'",
+      "metadata": {
+        "source_agent": "ResearchAgent",
+        "latency_ms": 14200,
+        "completeness": 0.65,
+        "flag": "needs_market_context",
+        "cycle_iteration": 2
+      },
+      "reads_from": [
+        "node_8"
+      ]
+    },
+    {
+      "id": "node_10",
+      "type": "delegation",
+      "timestamp": "2025-07-30T11:00:47Z",
+      "content": "Delegating to AnalysisAgent: 'Here is partial pricing data for AWS and GCP. Can you infer market segments from this partial data and extrapolate Azure positioning?'",
+      "metadata": {
+        "delegated_to": "AnalysisAgent",
+        "latency_ms": 200,
+        "cycle_iteration": 3
+      },
+      "reads_from": [
+        "node_9"
+      ]
+    },
+    {
+      "id": "node_11",
+      "type": "observation",
+      "timestamp": "2025-07-30T11:01:00Z",
+      "content": "AnalysisAgent returned: 'Partial data insufficient for reliable market segment analysis. Confidence would be below 40%. Need complete pricing dataset including Azure to produce meaningful segments. Returning empty result.'",
+      "metadata": {
+        "source_agent": "AnalysisAgent",
+        "latency_ms": 13500,
+        "completeness": 0.0,
+        "flag": "needs_complete_data",
+        "cycle_iteration": 3
+      },
+      "reads_from": [
+        "node_10"
+      ]
+    },
+    {
+      "id": "node_12",
+      "type": "decision",
+      "timestamp": "2025-07-30T11:01:01Z",
+      "content": "TIMEOUT: Agent execution exceeded maximum time limit (60 seconds). No final answer produced. The delegation loop between ResearchAgent and AnalysisAgent could not be resolved.",
+      "metadata": {
+        "latency_ms": 0,
+        "error": "execution_timeout",
+        "total_delegations": 4,
+        "cycle_detected": true
+      },
+      "reads_from": [
+        "node_11"
+      ]
+    }
+  ]
+}

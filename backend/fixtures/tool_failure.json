@@ -1,0 +1,164 @@
+{
+  "id": "trace_tool",
+  "name": "Tool Failure — Truncated Lint Output",
+  "description": "A coding agent's lint API call returns truncated output due to rate limiting. The agent treats partial results as complete and suggests the wrong fix.",
+  "expected_failure_category": "Tool",
+  "nodes": [
+    {
+      "id": "node_1",
+      "type": "plan",
+      "timestamp": "2025-07-30T10:00:00Z",
+      "content": "Task: Find and fix the NullPointerException in UserService.java. Plan: (1) Search codebase for UserService, (2) Analyze the file for null-safety issues, (3) Propose a fix.",
+      "metadata": {
+        "latency_ms": 290
+      },
+      "reads_from": []
+    },
+    {
+      "id": "node_2",
+      "type": "tool_call",
+      "timestamp": "2025-07-30T10:00:01Z",
+      "content": "code_search(query='UserService.java', scope='src/')",
+      "metadata": {
+        "tool_name": "code_search",
+        "latency_ms": 380,
+        "results_count": 3,
+        "relevance_score": 0.94
+      },
+      "reads_from": [
+        "node_1"
+      ]
+    },
+    {
+      "id": "node_3",
+      "type": "observation",
+      "timestamp": "2025-07-30T10:00:02Z",
+      "content": "Found files:\n  1. src/main/java/com/app/service/UserService.java (main)\n  2. src/test/java/com/app/service/UserServiceTest.java\n  3. src/main/java/com/app/controller/UserController.java",
+      "metadata": {
+        "char_count": 180
+      },
+      "reads_from": [
+        "node_2"
+      ]
+    },
+    {
+      "id": "node_4",
+      "type": "reasoning",
+      "timestamp": "2025-07-30T10:00:03Z",
+      "content": "UserService.java is the primary target. I need to analyze it for null-pointer issues, especially the getUserById method which is mentioned in the stack trace.",
+      "metadata": {
+        "latency_ms": 310
+      },
+      "reads_from": [
+        "node_3"
+      ]
+    },
+    {
+      "id": "node_5",
+      "type": "tool_call",
+      "timestamp": "2025-07-30T10:00:04Z",
+      "content": "lint_analyze(file='src/main/java/com/app/service/UserService.java', rules=['null-safety', 'exception-handling'])",
+      "metadata": {
+        "tool_name": "lint_analyze",
+        "latency_ms": 12000,
+        "error": "rate_limit_degraded",
+        "response_truncated": true,
+        "response_completeness": 0.45,
+        "note": "API returned partial response — only first 45% of analysis (imports + constructor). The getUserById method analysis was truncated."
+      },
+      "reads_from": [
+        "node_4"
+      ]
+    },
+    {
+      "id": "node_6",
+      "type": "observation",
+      "timestamp": "2025-07-30T10:00:05Z",
+      "content": "Lint analysis results for UserService.java:\n  - Lines 1-15: import statements — OK\n  - Lines 16-35: class declaration and fields — OK\n  - Lines 36-52: constructor with dependency injection — OK\n  - Lines 53-71: createUser() method — OK, proper null checks present\n[END OF RESULTS]",
+      "metadata": {
+        "char_count": 290,
+        "note": "Missing: getUserById() at lines 72-95 which contains the actual null-pointer bug (no null check on repository.findById() result)"
+      },
+      "reads_from": [
+        "node_5"
+      ]
+    },
+    {
+      "id": "node_7",
+      "type": "reasoning",
+      "timestamp": "2025-07-30T10:00:06Z",
+      "content": "The lint analysis shows no null-safety issues in UserService.java. All methods have proper null checks. Since the service itself looks clean, the NullPointerException must be originating from the caller — likely UserController.java which invokes getUserById.",
+      "metadata": {
+        "latency_ms": 340
+      },
+      "reads_from": [
+        "node_4",
+        "node_6"
+      ]
+    },
+    {
+      "id": "node_8",
+      "type": "tool_call",
+      "timestamp": "2025-07-30T10:00:07Z",
+      "content": "code_search(query='getUserById', file='src/main/java/com/app/controller/UserController.java')",
+      "metadata": {
+        "tool_name": "code_search",
+        "latency_ms": 290,
+        "relevance_score": 0.91
+      },
+      "reads_from": [
+        "node_7"
+      ]
+    },
+    {
+      "id": "node_9",
+      "type": "observation",
+      "timestamp": "2025-07-30T10:00:08Z",
+      "content": "UserController.java, lines 44-58:\n  @GetMapping('/users/{id}')\n  public ResponseEntity<User> getUser(@PathVariable Long id) {\n      User user = userService.getUserById(id);\n      return ResponseEntity.ok(user);\n  }",
+      "metadata": {
+        "char_count": 190
+      },
+      "reads_from": [
+        "node_8"
+      ]
+    },
+    {
+      "id": "node_10",
+      "type": "reasoning",
+      "timestamp": "2025-07-30T10:00:09Z",
+      "content": "The controller calls userService.getUserById(id) and passes the result directly to ResponseEntity.ok(). If getUserById returns null (user not found), this would cause issues. The fix should be a null check in the controller before returning the response.",
+      "metadata": {
+        "latency_ms": 380
+      },
+      "reads_from": [
+        "node_7",
+        "node_9"
+      ]
+    },
+    {
+      "id": "node_11",
+      "type": "decision",
+      "timestamp": "2025-07-30T10:00:10Z",
+      "content": "Decision: Add a null check in UserController.getUser() — if userService.getUserById() returns null, return a 404 instead of passing null to ResponseEntity.ok().",
+      "metadata": {
+        "latency_ms": 200
+      },
+      "reads_from": [
+        "node_10"
+      ]
+    },
+    {
+      "id": "node_12",
+      "type": "final_answer",
+      "timestamp": "2025-07-30T10:00:11Z",
+      "content": "Fix: Add null check in UserController.java:\n\n  User user = userService.getUserById(id);\n  if (user == null) {\n      return ResponseEntity.notFound().build();\n  }\n  return ResponseEntity.ok(user);\n\nThis prevents the NullPointerException by returning a 404 response when the user is not found.",
+      "metadata": {
+        "latency_ms": 250,
+        "correct_answer": "The actual bug is in UserService.getUserById() at line 78: repository.findById(id).get() throws NoSuchElementException when Optional is empty. Fix: use .orElse(null) or .orElseThrow()."
+      },
+      "reads_from": [
+        "node_11"
+      ]
+    }
+  ]
+}

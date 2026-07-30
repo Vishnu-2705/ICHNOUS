@@ -1,0 +1,125 @@
+{
+  "id": "trace_retrieval",
+  "name": "Retrieval Failure — Stale Refund Policy",
+  "description": "A customer-support agent answers a refund question using a stale (2023) refund policy instead of the current 2025 policy. The agent reasons correctly over the wrong document.",
+  "expected_failure_category": "Retrieval",
+  "nodes": [
+    {
+      "id": "node_1",
+      "type": "plan",
+      "timestamp": "2025-07-30T09:00:00Z",
+      "content": "Customer asks: 'I bought a laptop 45 days ago and it's defective. Can I get a refund?' Plan: (1) Look up current refund policy, (2) Look up customer order, (3) Apply policy to order, (4) Respond to customer.",
+      "metadata": {
+        "latency_ms": 320
+      },
+      "reads_from": []
+    },
+    {
+      "id": "node_2",
+      "type": "tool_call",
+      "timestamp": "2025-07-30T09:00:01Z",
+      "content": "search_knowledge_base(query='current refund policy electronics')",
+      "metadata": {
+        "tool_name": "search_knowledge_base",
+        "latency_ms": 850,
+        "relevance_score": 0.42,
+        "document_id": "policy-refund-2023-v2",
+        "document_date": "2023-03-15",
+        "note": "Stale document — 2023 policy retrieved instead of 2025"
+      },
+      "reads_from": [
+        "node_1"
+      ]
+    },
+    {
+      "id": "node_3",
+      "type": "observation",
+      "timestamp": "2025-07-30T09:00:02Z",
+      "content": "Retrieved document: 'Refund Policy (Effective March 2023) — Electronics purchases may be returned within 30 calendar days of purchase for a full refund. No exceptions. Items must be in original packaging.'",
+      "metadata": {
+        "source": "policy-refund-2023-v2",
+        "char_count": 210
+      },
+      "reads_from": [
+        "node_2"
+      ]
+    },
+    {
+      "id": "node_4",
+      "type": "reasoning",
+      "timestamp": "2025-07-30T09:00:03Z",
+      "content": "The refund policy states a 30-day return window with no exceptions. I need to check when the customer purchased the laptop to determine eligibility.",
+      "metadata": {
+        "latency_ms": 280
+      },
+      "reads_from": [
+        "node_3"
+      ]
+    },
+    {
+      "id": "node_5",
+      "type": "tool_call",
+      "timestamp": "2025-07-30T09:00:04Z",
+      "content": "lookup_order(customer_id='C-90421', product_category='electronics')",
+      "metadata": {
+        "tool_name": "lookup_order",
+        "latency_ms": 420,
+        "relevance_score": 0.97
+      },
+      "reads_from": [
+        "node_4"
+      ]
+    },
+    {
+      "id": "node_6",
+      "type": "observation",
+      "timestamp": "2025-07-30T09:00:05Z",
+      "content": "Order #ORD-78234: Dell XPS 15 laptop, purchased 2025-06-14 (45 days ago), price $1,299.00, status: delivered, condition reported: defective trackpad.",
+      "metadata": {
+        "order_id": "ORD-78234",
+        "days_since_purchase": 45
+      },
+      "reads_from": [
+        "node_5"
+      ]
+    },
+    {
+      "id": "node_7",
+      "type": "reasoning",
+      "timestamp": "2025-07-30T09:00:06Z",
+      "content": "The customer purchased the laptop 45 days ago. The refund policy allows returns within 30 days only, with no exceptions. 45 days > 30 days, so the customer is outside the return window. The refund request must be denied.",
+      "metadata": {
+        "latency_ms": 350
+      },
+      "reads_from": [
+        "node_4",
+        "node_6"
+      ]
+    },
+    {
+      "id": "node_8",
+      "type": "decision",
+      "timestamp": "2025-07-30T09:00:07Z",
+      "content": "Decision: DENY refund. Customer is outside the 30-day return window.",
+      "metadata": {
+        "latency_ms": 150
+      },
+      "reads_from": [
+        "node_7"
+      ]
+    },
+    {
+      "id": "node_9",
+      "type": "final_answer",
+      "timestamp": "2025-07-30T09:00:08Z",
+      "content": "I'm sorry, but I'm unable to process a refund for your Dell XPS 15 laptop. Our refund policy allows returns within 30 calendar days of purchase, and your purchase was made 45 days ago, which is outside the return window. I apologize for the inconvenience. You may want to explore our repair services for the defective trackpad.",
+      "metadata": {
+        "latency_ms": 200,
+        "correct_answer": "APPROVE refund — the 2025 policy allows 60-day returns for defective electronics."
+      },
+      "reads_from": [
+        "node_8"
+      ]
+    }
+  ]
+}
