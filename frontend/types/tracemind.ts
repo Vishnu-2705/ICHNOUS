@@ -113,4 +113,54 @@ export interface RegressionTest {
   minimal_inputs: Record<string, unknown>;
   recorded_tool_outputs: Array<Record<string, unknown>>;
   assertion: RegressionAssertion;
+  replay_status?: "ready" | "running" | "passed" | "failed" | string;
+  replay_logs?: string[];
 }
+
+export interface AssertionDetail {
+  name: string;
+  status: "PASSED" | "FAILED" | "SKIPPED" | string;
+  duration_ms: number;
+  detail?: string;
+}
+
+export interface RegressionExecutionResult {
+  trace_id: string;
+  test_name: string;
+  status: "PASSED" | "FAILED" | string;
+  baseline_status: string;
+  patched_status: string;
+  execution_time_ms: number;
+  pass_rate: number;
+  total_assertions: number;
+  passed_assertions: number;
+  assertion_details: AssertionDetail[];
+  logs: string[];
+}
+
+export interface NodeVulnerability {
+  node_id: string;
+  vulnerability_score: number;
+  attention_weight: number;
+  is_root_cause_candidate: boolean;
+}
+
+export interface GNNPredictionResponse {
+  trace_id: string;
+  engine_version: string;
+  regression_probability: number;
+  failure_probability: number;
+  failure_category: string;
+  failure_severity: number;
+  confidence_score: number;
+  predicted_root_cause_node_id: string;
+  vulnerable_nodes: NodeVulnerability[];
+  explanation_subgraph_nodes: string[];
+  explanation_subgraph_edges: string[];
+  similar_historical_traces: string[];
+  explanation: string;
+  suggested_fix: SuggestedFix;
+  execution_time_ms: number;
+}
+
+

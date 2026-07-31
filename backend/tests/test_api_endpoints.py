@@ -122,6 +122,17 @@ def test_post_regression_test_not_found():
     assert response.status_code == 404
 
 
+def test_post_run_regression_success():
+    """Test POST /traces/{id}/run-regression endpoint with valid ID."""
+    response = client.post("/traces/trace_retrieval/run-regression")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "PASSED"
+    assert data["baseline_status"] == "FAILED_AS_EXPECTED"
+    assert data["patched_status"] == "PASSED"
+    assert len(data["logs"]) > 0
+
+
 if __name__ == "__main__":
     test_get_traces()
     test_get_trace_by_id_success()
@@ -132,4 +143,6 @@ if __name__ == "__main__":
     test_post_diagnose_not_found()
     test_post_regression_test_success()
     test_post_regression_test_not_found()
+    test_post_run_regression_success()
     print("All API Endpoints unit tests passed successfully!")
+

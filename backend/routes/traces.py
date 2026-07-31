@@ -17,11 +17,14 @@ try:
     from graph.builder import build_graph
     from models.trace import (
         FullDiagnosisResponse,
+        GNNPredictionResponse,
+        RegressionExecutionResult,
         RegressionTest,
         Trace,
         TraceSummary,
     )
-    from regression.generator import generate_regression_test
+    from regression.generator import execute_regression_test, generate_regression_test
+    from regression.intelligence import run_gnn_regression_intelligence
 except ImportError:
     from backend.diagnosis.llm import diagnose_with_llm
     from backend.fixtures import get_all_fixtures, load_fixture_trace
@@ -33,11 +36,14 @@ except ImportError:
     from backend.graph.builder import build_graph
     from backend.models.trace import (
         FullDiagnosisResponse,
+        GNNPredictionResponse,
+        RegressionExecutionResult,
         RegressionTest,
         Trace,
         TraceSummary,
     )
-    from backend.regression.generator import generate_regression_test
+    from backend.regression.generator import execute_regression_test, generate_regression_test
+    from backend.regression.intelligence import run_gnn_regression_intelligence
 
 router = APIRouter(prefix="/traces", tags=["traces"])
 
@@ -236,3 +242,61 @@ async def generate_regression_test_endpoint(trace_id: str) -> RegressionTest:
     regression_test = generate_regression_test(trace, diagnosis_result, g)
     _REGRESSION_CACHE[trace.id] = regression_test
     return regression_test
+
+
+@router.post("/{trace_id}/run-regression", response_model=RegressionExecutionResult)
+async def run_regression_test_endpoint(trace_id: str) -> RegressionExecutionResult:
+    """
+    POST /traces/{id}/run-regression
+    Executes a live interactive regression test simulation for the trace in CI sandbox mode.
+    Evaluates baseline unpatched execution vs patched execution.
+    """
+    try:
+        trace = load_fixture_trace(trace_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Trace '{trace_id}' not found.")
+
+    g = build_graph(trace)
+    if trace.id in _DIAGNOSIS_CACHE:
+        diagnosis_result = _DIAGNOSIS_CACHE[trace.id].diagnosis
+    else:
+        anomalies = detect_anomalies(g)
+        critical_path = extract_critical_path(g)
+        root_cause_candidate = backward_walk(g, critical_path, anomalies)
+        evidence_nodes = [
+            {
+                "id": nid,
+                "type": g.nodes[nid].get("type"),
+                "content": g.nodes[nid].get("content"),
+                "metadata": g.nodes[nid].get("metadata"),
+            }
+            for nid in root_cause_candidate.evidence_node_ids
+            if g.has_node(nid)
+        ]
+        diagnosis_result = await asyncio.to_thread(
+            diagnose_with_llm, root_cause_candidate, evidence_nodes, g=g
+        )
+
+    return execute_regression_test(trace, diagnosis_result, g)
+
+
+@router.post("/{trace_id}/gnn-predict", response_model=GNNPredictionResponse)
+async def gnn_predict_endpoint(trace_id: str) -> GNNPredictionResponse:
+    """
+    POST /traces/{id}/gnn-predict
+    Runs Heterogeneous Graph Transformer (HGT) inference, node vulnerability evaluation,
+    GNNExplainer subgraph mask extraction, and memory bank vector search.
+    """
+    try:
+        trace = load_fixture_trace(trace_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Trace '{trace_id}' not found.")
+
+    g = build_graph(trace)
+    diagnosis_res = None
+    if trace.id in _DIAGNOSIS_CACHE:
+        diagnosis_res = _DIAGNOSIS_CACHE[trace.id].diagnosis
+
+    return run_gnn_regression_intelligence(trace, g, diagnosis_res)
+
+

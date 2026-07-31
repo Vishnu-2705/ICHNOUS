@@ -1,5 +1,7 @@
 import {
   FullDiagnosisResponse,
+  GNNPredictionResponse,
+  RegressionExecutionResult,
   RegressionTest,
   Trace,
   TraceSummary,
@@ -9,6 +11,8 @@ import {
   mockGenerateRegressionTest,
   mockGetTrace,
   mockGetTraces,
+  mockPredictGNNRegression,
+  mockRunRegressionTest,
 } from "./mock-api";
 
 function getBaseUrl(): string {
@@ -150,3 +154,63 @@ export async function generateRegressionTest(id: string): Promise<RegressionTest
     throw new Error(String(err));
   }
 }
+
+export async function runRegressionTest(id: string): Promise<RegressionExecutionResult> {
+  if (isMockEnabled()) {
+    return mockRunRegressionTest(id);
+  }
+
+  const baseUrl = getBaseUrl();
+  const encodedId = encodeURIComponent(id);
+  try {
+    const res = await fetch(`${baseUrl}/traces/${encodedId}/run-regression`, {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+    });
+    return await handleResponse<RegressionExecutionResult>(
+      res,
+      `Failed to execute regression test for trace '${id}'`
+    );
+  } catch (err: unknown) {
+    if (err instanceof Error) {
+      if (err.message.includes("Failed to fetch") || err.message.includes("NetworkError")) {
+        throw new Error(
+          `Could not reach the ICHNOUS backend at ${baseUrl}.\nVerify that FastAPI is running on port 8000 and CORS is enabled.`
+        );
+      }
+      throw err;
+    }
+    throw new Error(String(err));
+  }
+}
+
+export async function predictGNNRegression(id: string): Promise<GNNPredictionResponse> {
+  if (isMockEnabled()) {
+    return mockPredictGNNRegression(id);
+  }
+
+  const baseUrl = getBaseUrl();
+  const encodedId = encodeURIComponent(id);
+  try {
+    const res = await fetch(`${baseUrl}/traces/${encodedId}/gnn-predict`, {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+    });
+    return await handleResponse<GNNPredictionResponse>(
+      res,
+      `Failed to run GNN regression prediction for trace '${id}'`
+    );
+  } catch (err: unknown) {
+    if (err instanceof Error) {
+      if (err.message.includes("Failed to fetch") || err.message.includes("NetworkError")) {
+        throw new Error(
+          `Could not reach the ICHNOUS backend at ${baseUrl}.\nVerify that FastAPI is running on port 8000 and CORS is enabled.`
+        );
+      }
+      throw err;
+    }
+    throw new Error(String(err));
+  }
+}
+
+
