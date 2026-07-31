@@ -1,0 +1,42 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg-base: #F9F9F8;
+  --color-bg-surface: #FFFFFF;
+  --color-bg-canvas: #F3F3F1;
+  
+  --color-border-subtle: #E5E5E5;
+  --color-border-strong: #171717;
+  --color-border-focus: #171717;
+  
+  --color-text-primary: #171717;
+  --color-text-secondary: #737373;
+  
+  --color-evidence: #F59E0B;
+  --color-root-cause: #B91C1C;
+  --color-recommendation: #1D4ED8;
+  --color-safeguard: #16A34A;
+
+  --font-sans: var(--font-inter);
+  --font-display: var(--font-space-grotesk);
+}
+
+@layer base {
+  body {
+    @apply bg-bg-base text-text-primary font-sans antialiased;
+  }
+}
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+.shadow-truth {
+  box-shadow: 4px 4px 0px 0px #171717;
+}

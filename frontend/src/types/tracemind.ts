@@ -104,6 +104,8 @@ export interface TraceSummary {
   id: string;
   name: string;
   description: string;
+  status?: string;
+  created_at?: string;
 }
 
 export interface AnomalyFlag {
@@ -199,16 +201,6 @@ export interface RegressionTest {
   replay_logs?: string[];
 }
 
-// WebSocket Payload Types
-export type WSMessage =
-  | { type: "connected"; session_id: string; status: SessionStatus; event_count: number }
-  | { type: "node_added"; node: SerializedGraphNode; edges: SerializedGraphEdge[]; event_count: number; status: SessionStatus }
-  | { type: "session_status"; status: SessionStatus; error?: string }
-  | { type: "diagnosis_complete"; diagnosis: FullDiagnosisResponse }
-  | { type: "snapshot"; session_id: string; graph: SerializedGraph }
-  | { type: "ping" }
-  | { type: "error"; message: string };
-
 export interface AssertionDetail {
   name: string;
   status: "PASSED" | "FAILED" | "SKIPPED" | string;
@@ -254,3 +246,12 @@ export interface GNNPredictionResponse {
   suggested_fix: SuggestedFix;
   execution_time_ms: number;
 }
+
+export type WSMessage =
+  | { type: "connected"; session_id: string; status: SessionStatus; event_count: number }
+  | { type: "node_added"; node: SerializedGraphNode; edges: SerializedGraphEdge[]; event_count: number; status: SessionStatus }
+  | { type: "session_status"; status: SessionStatus; error?: string }
+  | { type: "diagnosis_complete"; diagnosis: FullDiagnosisResponse }
+  | { type: "snapshot"; session_id: string; graph: SerializedGraph }
+  | { type: "ping" }
+  | { type: "error"; message: string };
