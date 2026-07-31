@@ -49,3 +49,6 @@ frontend/out/
 *.swo
 .vscode/
 .idea/
+
+# PyTorch Model Files
+*.pt

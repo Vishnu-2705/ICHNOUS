@@ -243,6 +243,34 @@ async def diagnose_session_endpoint(session_id: str) -> FullDiagnosisResponse:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
 
 
+@router.post(
+    "/{session_id}/gnn-predict",
+    summary="Run GNN Regression Intelligence prediction on live session graph",
+)
+async def gnn_predict_session_endpoint(session_id: str) -> Dict[str, Any]:
+    """Runs Heterogeneous Graph Transformer (HGT) inference, vulnerability scoring, and GNNExplainer on live session."""
+    mgr = get_session_manager()
+    session = mgr.get_session(session_id)
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Session '{session_id}' not found.",
+        )
+    try:
+        from session.converter import session_to_trace
+        from regression.intelligence import run_gnn_regression_intelligence
+    except ImportError:
+        from backend.session.converter import session_to_trace
+        from backend.regression.intelligence import run_gnn_regression_intelligence
+
+    trace = session_to_trace(session)
+    g = mgr.get_session_graph(session_id)
+    diagnosis_res = session.diagnosis.diagnosis if session.diagnosis else None
+
+    res = await asyncio.to_thread(run_gnn_regression_intelligence, trace, g, diagnosis_res)
+    return res.model_dump()
+
+
 @router.get(
     "",
     response_model=PaginatedSessions,
