@@ -143,7 +143,7 @@ export function GraphNode({ data }: { data: GraphNodeData }) {
           <div className={clsx(styles.text)}>
             {getNodeIcon(data.type)}
           </div>
-          <span className="font-display font-normal text-[11px] uppercase tracking-wider text-text-secondary">
+          <span className="font-display font-thin text-[11px] uppercase tracking-wider text-text-secondary">
             {data.title || data.type.replace(/_/g, ' ')}
           </span>
         </div>
