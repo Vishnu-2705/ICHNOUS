@@ -35,17 +35,17 @@ function renderStructuredExplanation(explanationText: string) {
     return (
       <div className="flex flex-col gap-3 mb-6 font-sans text-xs leading-relaxed">
         {parts.map((p, idx) => {
-          let bgClass = "bg-bg-canvas border-border-subtle text-text-primary";
+          let bgClass = "bg-slate-100 dark:bg-slate-800 border-2 border-slate-400 text-slate-950 dark:text-slate-100";
           if (p.includes("🔍 Root Cause")) {
-            bgClass = "bg-red-950/20 border-red-800/40 text-red-200 font-mono";
+            bgClass = "bg-red-100/80 dark:bg-red-950/60 border-2 border-red-500 text-red-950 dark:text-red-100 font-mono font-bold text-xs";
           } else if (p.includes("💡 Technical Analysis")) {
-            bgClass = "bg-amber-950/20 border-amber-800/40 text-amber-200";
+            bgClass = "bg-amber-100/80 dark:bg-amber-950/60 border-2 border-amber-500 text-amber-950 dark:text-amber-100 font-sans font-bold text-xs";
           } else if (p.includes("🛠️ Recommended Fix")) {
-            bgClass = "bg-emerald-950/20 border-emerald-800/40 text-emerald-200 font-medium";
+            bgClass = "bg-emerald-100/80 dark:bg-emerald-950/60 border-2 border-emerald-600 text-emerald-950 dark:text-emerald-100 font-sans font-bold text-xs";
           }
 
           return (
-            <div key={idx} className={`p-3.5 border rounded-sm ${bgClass}`}>
+            <div key={idx} className={`p-4 border rounded-md shadow-sm ${bgClass}`}>
               <div>{p}</div>
             </div>
           );
@@ -55,7 +55,7 @@ function renderStructuredExplanation(explanationText: string) {
   }
 
   return (
-    <p className="text-text-primary text-sm leading-relaxed mb-6 font-sans bg-bg-canvas p-4 border border-border-subtle">
+    <p className="text-slate-950 dark:text-slate-100 text-sm leading-relaxed mb-6 font-sans bg-slate-100 dark:bg-slate-900 p-4 border-2 border-slate-300 font-bold">
       {explanationText}
     </p>
   );

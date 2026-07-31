@@ -117,16 +117,16 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ diagnosis }) => {
         <h4 className="text-xs font-mono font-bold text-slate-400 uppercase tracking-wider">
           Diagnostic Explanation
         </h4>
-        <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 text-slate-200 text-sm leading-relaxed font-sans flex flex-col gap-3">
+        <div className="bg-slate-100 dark:bg-slate-950 p-4 rounded-xl border-2 border-slate-400 dark:border-slate-800 text-slate-950 dark:text-slate-100 text-sm leading-relaxed font-sans flex flex-col gap-3">
           {explanation.split("\n\n").length >= 2 ? (
             explanation.split("\n\n").map((part, idx) => {
-              let styleClass = "text-slate-300";
+              let styleClass = "text-slate-950 dark:text-slate-200 font-medium";
               if (part.includes("🔍 Root Cause")) {
-                styleClass = "text-rose-400 font-mono font-medium border-l-2 border-rose-500 pl-3 py-0.5";
+                styleClass = "text-red-950 dark:text-rose-300 font-mono font-bold border-l-4 border-red-500 pl-3 py-1 bg-red-100/60 dark:bg-red-950/40 rounded-r-md";
               } else if (part.includes("💡 Technical Analysis")) {
-                styleClass = "text-amber-300 border-l-2 border-amber-500 pl-3 py-0.5";
+                styleClass = "text-amber-950 dark:text-amber-300 font-sans font-bold border-l-4 border-amber-500 pl-3 py-1 bg-amber-100/60 dark:bg-amber-950/40 rounded-r-md";
               } else if (part.includes("🛠️ Recommended Fix")) {
-                styleClass = "text-emerald-300 font-medium border-l-2 border-emerald-500 pl-3 py-0.5";
+                styleClass = "text-emerald-950 dark:text-emerald-300 font-sans font-bold border-l-4 border-emerald-600 pl-3 py-1 bg-emerald-100/60 dark:bg-emerald-950/40 rounded-r-md";
               }
               return (
                 <div key={idx} className={styleClass}>
@@ -135,7 +135,7 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ diagnosis }) => {
               );
             })
           ) : (
-            <div>{explanation}</div>
+            <div className="font-bold text-slate-950 dark:text-slate-100">{explanation}</div>
           )}
         </div>
       </div>
