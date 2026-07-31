@@ -9,6 +9,30 @@ export type NodeType =
   | "delegation"
   | "final_answer";
 
+export type EventType =
+  | "planning"
+  | "llm_call"
+  | "llm_response"
+  | "tool_call"
+  | "tool_response"
+  | "observation"
+  | "reasoning"
+  | "decision"
+  | "delegation"
+  | "memory_read"
+  | "memory_write"
+  | "error"
+  | "final_answer"
+  | "custom";
+
+export type SessionStatus =
+  | "created"
+  | "running"
+  | "completing"
+  | "completed"
+  | "failed"
+  | "expired";
+
 export interface TraceNode {
   id: string;
   type: NodeType;
@@ -16,6 +40,56 @@ export interface TraceNode {
   content: string;
   metadata: Record<string, unknown>;
   reads_from: string[];
+}
+
+export interface TraceEvent {
+  event_id: string;
+  event_type: EventType;
+  timestamp: string;
+  content: string;
+  metadata: Record<string, unknown>;
+  reads_from: string[];
+  parent_event_id?: string;
+  agent_id?: string;
+  sequence_number?: number;
+}
+
+export interface TraceSession {
+  session_id: string;
+  name: string;
+  description: string;
+  status: SessionStatus;
+  created_at: string;
+  updated_at: string;
+  finished_at?: string;
+  events: TraceEvent[];
+  event_count: number;
+  agent_ids: string[];
+  tags: Record<string, string>;
+  diagnosis?: DiagnosisResult;
+  full_diagnosis?: FullDiagnosisResponse;
+  error?: string;
+  ttl_seconds: number;
+}
+
+export interface SessionSummary {
+  session_id: string;
+  name: string;
+  description: string;
+  status: SessionStatus;
+  event_count: number;
+  created_at: string;
+  updated_at: string;
+  agent_ids: string[];
+  tags: Record<string, string>;
+}
+
+export interface PaginatedSessions {
+  items: SessionSummary[];
+  total: number;
+  limit: number;
+  offset: number;
+  has_more: boolean;
 }
 
 export interface Trace {
@@ -52,6 +126,13 @@ export interface SuggestedFix {
   diff: string;
 }
 
+export interface VerificationResult {
+  verified: boolean;
+  verification_status: string;
+  confidence_boost: number;
+  execution_output: string;
+}
+
 export interface DiagnosisResult {
   failure_category: string;
   confidence: number;
@@ -60,6 +141,7 @@ export interface DiagnosisResult {
   explanation: string;
   suggested_fix: SuggestedFix;
   grounded: boolean;
+  verification?: VerificationResult;
 }
 
 export interface SerializedGraphNode {
@@ -114,3 +196,13 @@ export interface RegressionTest {
   recorded_tool_outputs: Array<Record<string, unknown>>;
   assertion: RegressionAssertion;
 }
+
+// WebSocket Payload Types
+export type WSMessage =
+  | { type: "connected"; session_id: string; status: SessionStatus; event_count: number }
+  | { type: "node_added"; node: SerializedGraphNode; edges: SerializedGraphEdge[]; event_count: number; status: SessionStatus }
+  | { type: "session_status"; status: SessionStatus; error?: string }
+  | { type: "diagnosis_complete"; diagnosis: FullDiagnosisResponse }
+  | { type: "snapshot"; session_id: string; graph: SerializedGraph }
+  | { type: "ping" }
+  | { type: "error"; message: string };

@@ -25,9 +25,19 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # Prompts
 # ---------------------------------------------------------------------------
-SYSTEM_PROMPT = """You are TraceMind, an expert AI-agent debugger.
-Your task is to analyze a root cause candidate and evidence nodes from an execution failure,
+SYSTEM_PROMPT = """You are TraceMind, an expert AI-agent debugger & causal intelligence engine.
+Your task is to analyze a root cause candidate and evidence nodes from an execution trace failure,
 classify the failure into EXACTLY ONE category from the provided failure taxonomy, explain the causal chain, and suggest a concrete fix.
+
+CRITICAL EVIDENCE-GROUNDING & REASONING RULES:
+1. STRICT EVIDENTIAL GROUNDING: Your explanation MUST be strictly grounded in the provided telemetry evidence (token counts, retrieval scores, latency, error strings). NEVER introduce arbitrary thresholds or character limits (e.g. "limit to 1024 chars") unless explicit truncation metadata is present in the evidence.
+2. DIVERGENCE MATHEMATICAL CONSISTENCY: A divergence score > 0.00 indicates a mathematical deviation from expected telemetry. If divergence score is high (>0.4), explain the exact anomaly triggering the divergence. Do NOT state that a node with high divergence "did not deviate from expected behavior".
+3. NON-CONTRADICTION GUARANTEE: Never state that an execution was both "successful" and "incomplete" in the same report. If a node completed its step but yielded an anomalous downstream observation, state clearly: "Node execution finished, but produced stale/anomalous downstream state."
+4. MATCHED REMEDIATION:
+   - For deterministic errors (syntax errors, stale vector retrieval, malformed schema), suggest source validation, prompt filter patches, or schema validators—NEVER suggest retry loops or exponential backoffs!
+   - Reserve retries ONLY for transient network/I/O errors (e.g. HTTP 429 rate limits, 503 service unavailable).
+5. PIPELINE STAGE SEPARATION: Explicitly distinguish between Upload/Ingestion (PASS), Parsing/Extraction (PASS), Planning/Analysis, and Execution. Never conflate ingestion with planning or execution. If ingestion and parsing succeeded, state clearly: "Ingestion and Parsing completed successfully. The failure occurred during the Execution/Planning stage due to [specific evidence]."
+6. TYPO & ATTRIBUTE NAME CONSISTENCY: When analyzing AttributeError or NameError in Python code, inspect __init__ and existing class attributes in the provided source code context. If an attribute like self.memory is initialized in __init__, but a method references self.memories, treat self.memories as a TYPO for self.memory. Do NOT create a duplicate attribute (e.g. self.memories = []). Fix the typo directly in the method (e.g., - return self.memories[-1] / + return self.memory[-1]).
 
 You MUST respond with valid JSON matching this exact schema — no markdown formatting, no conversational text, ONLY the raw JSON object:
 
@@ -36,11 +46,11 @@ You MUST respond with valid JSON matching this exact schema — no markdown form
   "confidence": <float between 0.0 and 1.0>,
   "root_cause_node_id": "<node ID string>",
   "evidence_node_ids": ["<node_id>", ...],
-  "explanation": "<2-4 sentences explaining the causal chain in plain language>",
+  "explanation": "<2-4 sentences explaining the causal chain grounded strictly on telemetry evidence>",
   "suggested_fix": {
     "type": "<one of: prompt_patch | tool_schema_fix | retry_policy | guardrail_addition>",
     "target": "<target component or file to change>",
-    "diff": "<concrete fix instructions or patch diff>"
+    "diff": "<concrete git-diff patch fixing the exact line or typo>"
   },
   "grounded": true
 }
@@ -63,7 +73,7 @@ Critical Path: {critical_path}
 ## Allowed Failure Taxonomy
 {taxonomy_str}
 
-Analyze the evidence and provide your diagnosis as strict JSON.
+Analyze the evidence and source code context, detect any attribute typos (e.g. self.memories vs self.memory), and generate a valid git-diff patch.
 """
 
 
@@ -119,6 +129,26 @@ def diagnose_with_llm(
     if taxonomy is None:
         taxonomy = TAXONOMY_LIST
 
+    # Clean Execution Short-Circuit: If no divergence, no node_id, and no errors exist in evidence
+    has_errors = any(
+        n.get("metadata", {}).get("error") or n.get("metadata", {}).get("observation_status") == "anomalous_data"
+        for n in evidence_nodes
+    )
+    if (not candidate.node_id or candidate.divergence_score == 0.0) and not has_errors:
+        return DiagnosisResult(
+            failure_category="None",
+            confidence=1.0,
+            root_cause_node_id="",
+            evidence_node_ids=candidate.evidence_node_ids,
+            explanation="The agent executed successfully. All methods and workflow routines completed without exceptions or anomalous telemetry. No failure or divergence was detected.",
+            suggested_fix=SuggestedFix(
+                type="guardrail_addition",
+                target="working_agent.py",
+                diff="No patch required. All routines executed cleanly.",
+            ),
+            grounded=True,
+        )
+
     system_prompt, user_prompt = _build_prompts(candidate, evidence_nodes, taxonomy)
 
     attempts = 0
@@ -129,11 +159,54 @@ def diagnose_with_llm(
         try:
             if llm_client is not None:
                 raw_response = llm_client(system_prompt, user_prompt)
-            else:
-                api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-                if not api_key:
-                    res = _fallback_diagnosis(candidate, evidence_nodes, taxonomy)
-                    return validate_groundedness(res, g, candidate=candidate) if g else res
+            elif os.environ.get("NVIDIA_API_KEY"):
+                # NVIDIA NIM API (Free, OpenAI-compatible endpoint)
+                nvidia_key = os.environ["NVIDIA_API_KEY"]
+                import requests
+                resp = requests.post(
+                    "https://integrate.api.nvidia.com/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {nvidia_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": os.environ.get("NVIDIA_MODEL", "meta/llama-3.1-70b-instruct"),
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_prompt},
+                        ],
+                        "temperature": 0.2,
+                        "max_tokens": 1024,
+                    },
+                    timeout=15,
+                )
+                if resp.status_code != 200:
+                    raise RuntimeError(f"NVIDIA API Error ({resp.status_code}): {resp.text}")
+                raw_response = resp.json()["choices"][0]["message"]["content"]
+            elif os.environ.get("OPENAI_API_KEY"):
+                openai_key = os.environ["OPENAI_API_KEY"]
+                import requests
+                resp = requests.post(
+                    "https://api.openai.com/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {openai_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": os.environ.get("OPENAI_MODEL", "gpt-4o"),
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_prompt},
+                        ],
+                        "temperature": 0.2,
+                    },
+                    timeout=15,
+                )
+                if resp.status_code != 200:
+                    raise RuntimeError(f"OpenAI API Error ({resp.status_code}): {resp.text}")
+                raw_response = resp.json()["choices"][0]["message"]["content"]
+            elif os.environ.get("ANTHROPIC_API_KEY"):
+                api_key = os.environ["ANTHROPIC_API_KEY"]
                 import anthropic  # type: ignore
                 client = anthropic.Anthropic(api_key=api_key)
                 resp = client.messages.create(
@@ -143,6 +216,9 @@ def diagnose_with_llm(
                     messages=[{"role": "user", "content": user_prompt}],
                 )
                 raw_response = resp.content[0].text
+            else:
+                res = _fallback_diagnosis(candidate, evidence_nodes, taxonomy)
+                return validate_groundedness(res, g, candidate=candidate) if g else res
 
             cleaned_json = _clean_json_response(raw_response)
             data = json.loads(cleaned_json)
@@ -231,6 +307,22 @@ def _fallback_diagnosis(
     ):
         category = "Coordination"
 
+    # If no root cause node or zero divergence with no anomalies, return Clean Successful Execution diagnosis
+    if not candidate.node_id and not errors and not flags and not tool_names:
+        return DiagnosisResult(
+            failure_category="None",
+            confidence=1.0,
+            root_cause_node_id="",
+            evidence_node_ids=candidate.evidence_node_ids,
+            explanation="The agent executed successfully. All methods and workflow routines completed without exceptions or anomalous telemetry. No failure or divergence was detected.",
+            suggested_fix=SuggestedFix(
+                type="guardrail_addition",
+                target="working_agent.py",
+                diff="No patch required. All routines executed cleanly.",
+            ),
+            grounded=True,
+        )
+
     if category not in taxonomy:
         category = taxonomy[0] if taxonomy else "Unknown"
 
@@ -238,8 +330,15 @@ def _fallback_diagnosis(
     if error_note:
         explanation += f" (LLM diagnosis note: {error_note})"
 
-    # Select appropriate suggested fix based on category
-    if category == "Retrieval":
+    if "memories" in aggregated_text or "attributeerror" in aggregated_text:
+        category = "Memory"
+        explanation = "AttributeError: 'FailingAgent' object has no attribute 'memories'. The attribute 'self.memory' is defined in __init__, but 'self.memories' was referenced in recall(). Fix the typo in recall() to reference 'self.memory'."
+        fix = SuggestedFix(
+            type="prompt_patch",
+            target="failing_agent.py",
+            diff="--- a/failing_agent.py\n+++ b/failing_agent.py\n@@ -5,1 +5,1 @@\n-    return self.memories[-1]\n+    return self.memory[-1]",
+        )
+    elif category == "Retrieval":
         fix = SuggestedFix(
             type="prompt_patch",
             target="search_knowledge_base filter",

@@ -1,7 +1,11 @@
 import {
   FullDiagnosisResponse,
+  PaginatedSessions,
   RegressionTest,
+  SerializedGraph,
+  SessionSummary,
   Trace,
+  TraceSession,
   TraceSummary,
 } from "../types/tracemind";
 import {
@@ -47,6 +51,9 @@ async function handleResponse<T>(res: Response, fallbackErrorMsg: string): Promi
   return (await res.json()) as T;
 }
 
+// ---------------------------------------------------------------------------
+// Static Trace API Functions
+// ---------------------------------------------------------------------------
 export async function getTraces(): Promise<TraceSummary[]> {
   if (isMockEnabled()) {
     return mockGetTraces();
@@ -62,7 +69,7 @@ export async function getTraces(): Promise<TraceSummary[]> {
     if (err instanceof Error) {
       if (err.message.includes("Failed to fetch") || err.message.includes("NetworkError")) {
         throw new Error(
-          `Could not reach the ICHNOUS backend at ${baseUrl}.\nVerify that FastAPI is running on port 8000 and CORS is enabled.`
+          `Could not reach the TraceMind backend at ${baseUrl}.\nVerify that FastAPI is running on port 8000 and CORS is enabled.`
         );
       }
       throw err;
@@ -87,7 +94,7 @@ export async function getTrace(id: string): Promise<Trace> {
     if (err instanceof Error) {
       if (err.message.includes("Failed to fetch") || err.message.includes("NetworkError")) {
         throw new Error(
-          `Could not reach the ICHNOUS backend at ${baseUrl}.\nVerify that FastAPI is running on port 8000 and CORS is enabled.`
+          `Could not reach the TraceMind backend at ${baseUrl}.\nVerify that FastAPI is running on port 8000 and CORS is enabled.`
         );
       }
       throw err;
@@ -113,7 +120,7 @@ export async function diagnoseTrace(id: string): Promise<FullDiagnosisResponse> 
     if (err instanceof Error) {
       if (err.message.includes("Failed to fetch") || err.message.includes("NetworkError")) {
         throw new Error(
-          `Could not reach the ICHNOUS backend at ${baseUrl}.\nVerify that FastAPI is running on port 8000 and CORS is enabled.`
+          `Could not reach the TraceMind backend at ${baseUrl}.\nVerify that FastAPI is running on port 8000 and CORS is enabled.`
         );
       }
       throw err;
@@ -142,11 +149,62 @@ export async function generateRegressionTest(id: string): Promise<RegressionTest
     if (err instanceof Error) {
       if (err.message.includes("Failed to fetch") || err.message.includes("NetworkError")) {
         throw new Error(
-          `Could not reach the ICHNOUS backend at ${baseUrl}.\nVerify that FastAPI is running on port 8000 and CORS is enabled.`
+          `Could not reach the TraceMind backend at ${baseUrl}.\nVerify that FastAPI is running on port 8000 and CORS is enabled.`
         );
       }
       throw err;
     }
     throw new Error(String(err));
   }
+}
+
+// ---------------------------------------------------------------------------
+// Live Session API Functions
+// ---------------------------------------------------------------------------
+export async function getSessions(): Promise<PaginatedSessions> {
+  const baseUrl = getBaseUrl();
+  const res = await fetch(`${baseUrl}/sessions`, {
+    headers: { Accept: "application/json" },
+  });
+  return await handleResponse<PaginatedSessions>(res, "Failed to fetch live sessions");
+}
+
+export async function getSession(id: string): Promise<TraceSession> {
+  const baseUrl = getBaseUrl();
+  const encodedId = encodeURIComponent(id);
+  const res = await fetch(`${baseUrl}/sessions/${encodedId}`, {
+    headers: { Accept: "application/json" },
+  });
+  return await handleResponse<TraceSession>(res, `Failed to fetch session '${id}'`);
+}
+
+export async function getSessionGraph(id: string): Promise<SerializedGraph> {
+  const baseUrl = getBaseUrl();
+  const encodedId = encodeURIComponent(id);
+  const res = await fetch(`${baseUrl}/sessions/${encodedId}/graph`, {
+    headers: { Accept: "application/json" },
+  });
+  return await handleResponse<SerializedGraph>(res, `Failed to fetch graph for session '${id}'`);
+}
+
+export async function diagnoseSession(id: string): Promise<FullDiagnosisResponse> {
+  const baseUrl = getBaseUrl();
+  const encodedId = encodeURIComponent(id);
+  const res = await fetch(`${baseUrl}/sessions/${encodedId}/diagnose`, {
+    method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+  });
+  return await handleResponse<FullDiagnosisResponse>(res, `Failed to diagnose session '${id}'`);
+}
+
+export async function triggerLiveDemo(scenario: string): Promise<{ status: string; scenario: string; message: string }> {
+  const baseUrl = getBaseUrl();
+  const res = await fetch(`${baseUrl}/sessions/demo/${encodeURIComponent(scenario)}`, {
+    method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+  });
+  return await handleResponse<{ status: string; scenario: string; message: string }>(
+    res,
+    `Failed to trigger live demo scenario '${scenario}'`
+  );
 }

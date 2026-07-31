@@ -369,8 +369,13 @@ def backward_walk(
         if scored:
             candidates = scored
         else:
-            # Absolute fallback: first node on critical path
-            candidates = [(critical_path[0], 0.0, len(critical_path) - 1, True)]
+            # When zero divergence and no anomalies exist, return unassigned root cause candidate (FR-10)
+            return RootCauseCandidate(
+                node_id="",
+                divergence_score=0.0,
+                evidence_node_ids=critical_path,
+                critical_path=critical_path,
+            )
 
     # Rank per AGENTS.md §8.4:
     # 1. Prefer downstream_normal == True (propagation cascade)
@@ -435,3 +440,53 @@ def rank_root_cause_candidates(candidates: List[RootCauseCandidate]) -> Optional
     """
     sorted_candidates = sort_root_cause_candidates(candidates)
     return sorted_candidates[0] if sorted_candidates else None
+
+
+def get_top_k_root_cause_candidates(
+    g: nx.DiGraph,
+    k: int = 3,
+    critical_path: Optional[List[str]] = None,
+    anomalies: Optional[List[AnomalyFlag]] = None,
+) -> List[RootCauseCandidate]:
+    """
+    Fulfills FR-10: Surface top-K root-cause candidates with confidence scores
+    when multiple nodes are comparably anomalous.
+    """
+    if not g.nodes:
+        return []
+
+    if critical_path is None or not critical_path:
+        critical_path = extract_critical_path(g)
+    if anomalies is None:
+        anomalies = detect_anomalies(g)
+
+    divergences: Dict[str, float] = {}
+    for nid in critical_path:
+        divergences[nid] = compute_divergence(g, nid, anomalies)
+
+    candidate_objs: List[RootCauseCandidate] = []
+    for nid in critical_path[:-1]:
+        div = divergences[nid]
+        if div > 0:
+            evidence_ids = _extract_evidence(g, nid, critical_path)
+            candidate_objs.append(
+                RootCauseCandidate(
+                    node_id=nid,
+                    divergence_score=div,
+                    evidence_node_ids=evidence_ids,
+                    critical_path=critical_path,
+                )
+            )
+
+    if not candidate_objs and critical_path:
+        candidate_objs.append(
+            RootCauseCandidate(
+                node_id=critical_path[0],
+                divergence_score=0.0,
+                evidence_node_ids=[critical_path[0]],
+                critical_path=critical_path,
+            )
+        )
+
+    sorted_cands = sort_root_cause_candidates(candidate_objs)
+    return sorted_cands[:k]
