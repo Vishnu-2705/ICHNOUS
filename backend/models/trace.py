@@ -107,3 +107,54 @@ class RegressionTest(BaseModel):
     minimal_inputs: Dict[str, Any]
     recorded_tool_outputs: List[Dict[str, Any]]
     assertion: RegressionAssertion
+    replay_status: Optional[str] = "ready"
+    replay_logs: Optional[List[str]] = Field(default_factory=list)
+
+
+class AssertionDetail(BaseModel):
+    name: str
+    status: str  # PASSED | FAILED | SKIPPED
+    duration_ms: float
+    detail: Optional[str] = None
+
+
+class RegressionExecutionResult(BaseModel):
+    trace_id: str
+    test_name: str
+    status: str  # PASSED | FAILED
+    baseline_status: str
+    patched_status: str
+    execution_time_ms: float
+    pass_rate: float
+    total_assertions: int
+    passed_assertions: int
+    assertion_details: List[AssertionDetail]
+    logs: List[str]
+
+
+class NodeVulnerability(BaseModel):
+    node_id: str
+    vulnerability_score: float  # [0, 1]
+    attention_weight: float    # [0, 1]
+    is_root_cause_candidate: bool
+
+
+class GNNPredictionResponse(BaseModel):
+    trace_id: str
+    engine_version: str
+    regression_probability: float  # [0, 1]
+    failure_probability: float     # [0, 1]
+    failure_category: str
+    failure_severity: float        # [0, 1]
+    confidence_score: float        # [0, 1]
+    predicted_root_cause_node_id: str
+    vulnerable_nodes: List[NodeVulnerability]
+    explanation_subgraph_nodes: List[str]
+    explanation_subgraph_edges: List[str]
+    similar_historical_traces: List[str]
+    explanation: str
+    suggested_fix: SuggestedFix
+    execution_time_ms: float
+
+
+

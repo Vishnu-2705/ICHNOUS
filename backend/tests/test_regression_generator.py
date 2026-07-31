@@ -19,6 +19,7 @@ from models.trace import (
     SuggestedFix,
 )
 from regression.generator import (
+    execute_regression_test,
     generate_regression_test,
     generate_regression_test_dict,
     generate_regression_test_json,
@@ -98,25 +99,31 @@ def test_generate_regression_test_json():
     assert "assertion" in parsed_dict
 
 
-def test_generate_regression_test_dict():
+def test_execute_regression_test():
     trace = get_retrieval_failure_trace()
     diagnosis = DiagnosisResult(
         failure_category="Retrieval",
         confidence=0.9,
         root_cause_node_id="node_2",
         evidence_node_ids=["node_2"],
-        explanation="Stale document",
+        explanation="Stale document retrieved",
         suggested_fix=SuggestedFix(type="prompt_patch", target="search", diff="fix"),
         grounded=True,
     )
 
-    res_dict = generate_regression_test_dict(trace, diagnosis)
-    assert isinstance(res_dict, dict)
-    assert res_dict["trace_id"] == "trace_retrieval"
+    exec_result = execute_regression_test(trace, diagnosis)
+    assert exec_result.status == "PASSED"
+    assert exec_result.baseline_status == "FAILED_AS_EXPECTED"
+    assert exec_result.patched_status == "PASSED"
+    assert exec_result.total_assertions == 4
+    assert exec_result.passed_assertions == 4
+    assert len(exec_result.logs) > 0
 
 
 if __name__ == "__main__":
     test_generate_regression_test_basic()
     test_generate_regression_test_json()
     test_generate_regression_test_dict()
+    test_execute_regression_test()
     print("All Regression Generator unit tests passed successfully!")
+

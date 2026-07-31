@@ -294,6 +294,7 @@ export default function HomePage() {
                   {/* Regression Test Artifact Panel */}
                   <RegressionTestPanel
                     regressionTest={regressionTest}
+                    traceId={selectedTraceId}
                     onGenerate={handleGenerateRegression}
                     isLoading={isGeneratingRegression}
                   />
