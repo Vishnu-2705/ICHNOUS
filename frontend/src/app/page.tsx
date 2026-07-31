@@ -9,10 +9,14 @@ import { GraphCanvas } from "../components/graph/GraphCanvas";
 import { InvestigationSummary } from "../components/summary/InvestigationSummary";
 import { InvestigationOverlay } from "../components/overlay/InvestigationOverlay";
 import { ExecutionTimeline } from "../components/timeline/ExecutionTimeline";
-import { diagnoseTrace, getTrace } from "../lib/api";
+import { diagnoseTrace, getTrace, uploadCodeForAnalysis } from "../lib/api";
 import { RevealProvider, useReveal } from "../components/reveal/RevealContext";
+import { WorkflowStepper, WorkflowStage } from "../components/workflow/workflow-stepper";
+import { GuidedWorkflowView } from "../components/workflow/guided-workflow-view";
 
 function IchnousWorkspaceContent() {
+  const [viewMode, setViewMode] = useState<"guided" | "dashboard">("guided");
+  const [currentStage, setCurrentStage] = useState<WorkflowStage>("complete");
   const [isTimelineOpen, setIsTimelineOpen] = useState(false);
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -49,7 +53,6 @@ function IchnousWorkspaceContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCaseId]);
 
-
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.shiftKey && e.key.toUpperCase() === "R") {
@@ -67,85 +70,125 @@ function IchnousWorkspaceContent() {
   const handleUploadSuccess = (sessionId: string) => {
     queryClient.invalidateQueries({ queryKey: ["cases"] });
     setSelectedCaseId(sessionId);
+    setCurrentStage("graph");
+  };
+
+  const handleDirectFileUpload = async (file: File) => {
+    try {
+      const res = await uploadCodeForAnalysis(file);
+      if (res.session_id) {
+        handleUploadSuccess(res.session_id);
+      }
+    } catch (err: unknown) {
+      console.warn("Direct file upload error:", err);
+    }
   };
 
   return (
     <div className="flex flex-col h-screen w-full bg-bg-base overflow-hidden text-text-primary">
-      {/* Top Application Navigation Header */}
-      <Header onUploadSuccess={handleUploadSuccess} />
+      {/* Top Navigation Header */}
+      <Header
+        onUploadSuccess={handleUploadSuccess}
+        viewMode={viewMode}
+        onToggleViewMode={() => setViewMode(viewMode === "guided" ? "dashboard" : "guided")}
+      />
+
+      {/* Guided Workflow Stepper Bar */}
+      <WorkflowStepper
+        currentStage={currentStage}
+        onSelectStage={setCurrentStage}
+        isVerified={!!diagnosisData}
+      />
 
       <div className="lg:hidden flex items-center justify-center flex-1 bg-bg-base text-text-primary p-6 text-center">
         <p className="font-display font-bold text-lg">Ichnous is optimized for desktop.</p>
       </div>
 
-      <div className="hidden lg:grid grid-cols-[280px_1fr_420px] flex-1 w-full bg-bg-base overflow-hidden text-text-primary">
-        <CasesSidebar
-          selectedCaseId={selectedCaseId}
-          onSelectCase={setSelectedCaseId}
-        />
-
-        <div className="flex flex-col relative h-full bg-bg-canvas overflow-hidden">
-          {selectedCaseId && <InvestigationOverlay />}
-
-          {isDiagnoseError && (
-            <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none bg-black/10">
-              <div className="bg-bg-surface border-[2px] border-border-strong shadow-truth p-6 flex flex-col items-center pointer-events-auto">
-                <AlertCircle className="text-color-root-cause mb-3" size={32} />
-                <h2 className="font-display font-bold text-lg text-color-root-cause mb-2">Investigation failed.</h2>
-                <button
-                  onClick={() => refetchDiagnosis()}
-                  className="px-4 py-2 border-[2px] border-border-strong shadow-truth hover:translate-y-[2px] hover:translate-x-[2px] hover:shadow-none transition-all font-display font-bold uppercase text-xs"
-                >
-                  Retry
-                </button>
-              </div>
-            </div>
-          )}
-
-          <main className="flex-1 relative overflow-hidden">
-            <GraphCanvas
-              selectedCaseId={selectedCaseId}
-              selectedNodeId={selectedNodeId}
-              onSelectNode={setSelectedNodeId}
-              diagnosis={diagnosisData || null}
-            />
-          </main>
-
-          <div
-            className={`flex flex-col bg-bg-surface border-t border-border-strong transition-all duration-300 ease-in-out shrink-0 ${
-              isTimelineOpen ? "h-36" : "h-11"
-            }`}
-          >
-            <button
-              onClick={() => setIsTimelineOpen(!isTimelineOpen)}
-              className="flex items-center justify-between px-4 h-11 w-full hover:bg-bg-canvas transition-colors shrink-0 text-xs"
-            >
-              <div className="flex items-center gap-2">
-                <span className="font-display font-bold text-xs uppercase tracking-wider text-text-primary">EXECUTION TIMELINE</span>
-                <span className="px-2 py-0.5 rounded-full bg-bg-canvas border border-border-subtle text-[10px] font-mono text-text-secondary">
-                  {trace?.nodes?.length || 0} Events
-                </span>
-              </div>
-              <div className="flex items-center gap-1 text-[11px] text-text-secondary font-sans">
-                {isTimelineOpen ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
-                <span>{isTimelineOpen ? "Collapse" : "Expand"}</span>
-              </div>
-            </button>
-
-            <ExecutionTimeline trace={trace || null} />
-          </div>
-        </div>
-
-        <aside className="flex flex-col border-l-[2px] border-border-strong bg-bg-surface z-10 h-full overflow-hidden">
-          <InvestigationSummary
-            diagnosis={diagnosisData || null}
+      {/* Main Workspace: Guided View vs Full Dashboard */}
+      {viewMode === "guided" ? (
+        <div className="hidden lg:grid grid-cols-[280px_1fr] flex-1 w-full bg-bg-base overflow-hidden text-text-primary">
+          <CasesSidebar
+            selectedCaseId={selectedCaseId}
+            onSelectCase={setSelectedCaseId}
+          />
+          <GuidedWorkflowView
+            currentStage={currentStage}
+            onSelectStage={setCurrentStage}
+            selectedCaseId={selectedCaseId}
             trace={trace || null}
-            selectedNodeId={selectedNodeId}
-            onSelectNode={setSelectedNodeId}
+            diagnosis={diagnosisData || null}
+            onUploadFile={handleDirectFileUpload}
+          />
+        </div>
+      ) : (
+        <div className="hidden lg:grid grid-cols-[280px_1fr_420px] flex-1 w-full bg-bg-base overflow-hidden text-text-primary">
+          <CasesSidebar
+            selectedCaseId={selectedCaseId}
+            onSelectCase={setSelectedCaseId}
           />
 
-        </aside>
-      </div>
+          <div className="flex flex-col relative h-full bg-bg-canvas overflow-hidden">
+            {selectedCaseId && <InvestigationOverlay />}
+
+            {isDiagnoseError && (
+              <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none bg-black/10">
+                <div className="bg-bg-surface border-[2px] border-border-strong shadow-truth p-6 flex flex-col items-center pointer-events-auto">
+                  <AlertCircle className="text-color-root-cause mb-3" size={32} />
+                  <h2 className="font-display font-bold text-lg text-color-root-cause mb-2">Investigation failed.</h2>
+                  <button
+                    onClick={() => refetchDiagnosis()}
+                    className="px-4 py-2 border-[2px] border-border-strong shadow-truth hover:translate-y-[2px] hover:translate-x-[2px] hover:shadow-none transition-all font-display font-bold uppercase text-xs"
+                  >
+                    Retry
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <main className="flex-1 relative overflow-hidden">
+              <GraphCanvas
+                selectedCaseId={selectedCaseId}
+                selectedNodeId={selectedNodeId}
+                onSelectNode={setSelectedNodeId}
+                diagnosis={diagnosisData || null}
+              />
+            </main>
+
+            <div
+              className={`flex flex-col bg-bg-surface border-t border-border-strong transition-all duration-300 ease-in-out shrink-0 ${
+                isTimelineOpen ? "h-36" : "h-11"
+              }`}
+            >
+              <button
+                onClick={() => setIsTimelineOpen(!isTimelineOpen)}
+                className="flex items-center justify-between px-4 h-11 w-full hover:bg-bg-canvas transition-colors shrink-0 text-xs"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="font-display font-bold text-xs uppercase tracking-wider text-text-primary">EXECUTION TIMELINE</span>
+                  <span className="px-2 py-0.5 rounded-full bg-bg-canvas border border-border-subtle text-[10px] font-mono text-text-secondary">
+                    {trace?.nodes?.length || 0} Events
+                  </span>
+                </div>
+                <div className="flex items-center gap-1 text-[11px] text-text-secondary font-sans">
+                  {isTimelineOpen ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+                  <span>{isTimelineOpen ? "Collapse" : "Expand"}</span>
+                </div>
+              </button>
+
+              <ExecutionTimeline trace={trace || null} />
+            </div>
+          </div>
+
+          <aside className="flex flex-col border-l-[2px] border-border-strong bg-bg-surface z-10 h-full overflow-hidden">
+            <InvestigationSummary
+              diagnosis={diagnosisData || null}
+              trace={trace || null}
+              selectedNodeId={selectedNodeId}
+              onSelectNode={setSelectedNodeId}
+            />
+          </aside>
+        </div>
+      )}
     </div>
   );
 }
@@ -157,3 +200,4 @@ export default function IchnousWorkspace() {
     </RevealProvider>
   );
 }
+

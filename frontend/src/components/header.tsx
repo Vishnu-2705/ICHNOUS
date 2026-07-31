@@ -8,9 +8,16 @@ import { triggerLiveDemo } from "../lib/api";
 interface HeaderProps {
   useMockApi?: boolean;
   onUploadSuccess?: (sessionId: string) => void;
+  viewMode?: "guided" | "dashboard";
+  onToggleViewMode?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ useMockApi = false, onUploadSuccess }) => {
+export const Header: React.FC<HeaderProps> = ({
+  useMockApi = false,
+  onUploadSuccess,
+  viewMode = "guided",
+  onToggleViewMode,
+}) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isTriggeringDemo, setIsTriggeringDemo] = useState(false);
 
@@ -48,6 +55,18 @@ export const Header: React.FC<HeaderProps> = ({ useMockApi = false, onUploadSucc
         </div>
 
         <div className="flex items-center gap-2.5 flex-wrap">
+          {/* Mode Switcher: Guided vs Full Dashboard */}
+          {onToggleViewMode && (
+            <button
+              type="button"
+              onClick={onToggleViewMode}
+              className="px-3 py-1.5 bg-bg-canvas text-text-primary font-display font-bold text-xs uppercase border border-border-strong shadow-[2px_2px_0px_0px_#171717] hover:translate-y-[1px] hover:translate-x-[1px] hover:shadow-none transition-all flex items-center gap-1.5"
+            >
+              <Sparkles size={13} className="text-amber-500" />
+              <span>{viewMode === "guided" ? "Full Dashboard Mode" : "Guided Workflow Mode"}</span>
+            </button>
+          )}
+
           {/* Live Demo Trigger Selector */}
           <div className="relative inline-block">
             <select
