@@ -27,22 +27,28 @@ function IchnousWorkspaceContent() {
     enabled: !!selectedCaseId,
   });
 
-  const diagnoseMutation = useMutation({
-    mutationFn: (id: string) => diagnoseTrace(id),
-    onSuccess: () => {
-      startReveal();
-    },
+  // Fetch diagnosis for selected case with 10-minute in-memory caching
+  const {
+    data: diagnosisData,
+    isLoading: isDiagnosing,
+    isError: isDiagnoseError,
+    refetch: refetchDiagnosis,
+  } = useQuery({
+    queryKey: ["diagnosis", selectedCaseId],
+    queryFn: () => diagnoseTrace(selectedCaseId!),
+    enabled: !!selectedCaseId,
+    staleTime: 10 * 60 * 1000,
   });
 
   useEffect(() => {
     if (selectedCaseId) {
       setSelectedNodeId(null);
-      diagnoseMutation.reset();
       resetReveal();
-      diagnoseMutation.mutate(selectedCaseId);
+      startReveal();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCaseId]);
+
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -81,13 +87,13 @@ function IchnousWorkspaceContent() {
         <div className="flex flex-col relative h-full bg-bg-canvas overflow-hidden">
           {selectedCaseId && <InvestigationOverlay />}
 
-          {diagnoseMutation.isError && (
+          {isDiagnoseError && (
             <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none bg-black/10">
               <div className="bg-bg-surface border-[2px] border-border-strong shadow-truth p-6 flex flex-col items-center pointer-events-auto">
                 <AlertCircle className="text-color-root-cause mb-3" size={32} />
                 <h2 className="font-display font-bold text-lg text-color-root-cause mb-2">Investigation failed.</h2>
                 <button
-                  onClick={() => selectedCaseId && diagnoseMutation.mutate(selectedCaseId)}
+                  onClick={() => refetchDiagnosis()}
                   className="px-4 py-2 border-[2px] border-border-strong shadow-truth hover:translate-y-[2px] hover:translate-x-[2px] hover:shadow-none transition-all font-display font-bold uppercase text-xs"
                 >
                   Retry
@@ -101,7 +107,7 @@ function IchnousWorkspaceContent() {
               selectedCaseId={selectedCaseId}
               selectedNodeId={selectedNodeId}
               onSelectNode={setSelectedNodeId}
-              diagnosis={diagnoseMutation.data || null}
+              diagnosis={diagnosisData || null}
             />
           </main>
 
@@ -132,11 +138,12 @@ function IchnousWorkspaceContent() {
 
         <aside className="flex flex-col border-l-[2px] border-border-strong bg-bg-surface z-10 h-full overflow-hidden">
           <InvestigationSummary
-            diagnosis={diagnoseMutation.data || null}
+            diagnosis={diagnosisData || null}
             trace={trace || null}
             selectedNodeId={selectedNodeId}
             onSelectNode={setSelectedNodeId}
           />
+
         </aside>
       </div>
     </div>

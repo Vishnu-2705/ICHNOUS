@@ -34,7 +34,13 @@ if TORCH_AVAILABLE:
             
             return vuln_scores, pooled_embedding
 
+    _CACHED_PYTORCH_MODEL = None
+
     def get_pytorch_model() -> DummyHGTModel:
+        global _CACHED_PYTORCH_MODEL
+        if _CACHED_PYTORCH_MODEL is not None:
+            return _CACHED_PYTORCH_MODEL
+
         model_path = os.path.join(os.path.dirname(__file__), "hgt_model.pt")
         model = DummyHGTModel(in_dim=32, hidden_dim=64)
         
@@ -45,7 +51,9 @@ if TORCH_AVAILABLE:
         # Load the model weights
         model.load_state_dict(torch.load(model_path, weights_only=True))
         model.eval()
-        return model
+        _CACHED_PYTORCH_MODEL = model
+        return _CACHED_PYTORCH_MODEL
 else:
     def get_pytorch_model():
         return None
+

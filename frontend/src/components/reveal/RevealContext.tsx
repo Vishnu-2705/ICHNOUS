@@ -41,15 +41,16 @@ export function RevealProvider({ children }: { children: React.ReactNode }) {
     };
 
     schedule(0, "overlay");
-    schedule(200, "dim");
-    schedule(500, "evidence");
-    schedule(850, "edges");
-    schedule(1200, "camera"); // Camera starts
-    schedule(1700, "root_cause"); // 1700ms Root cause pulse
-    schedule(1900, "summary"); // 1900ms Summary stagger
-    schedule(2200, "timeline"); // 2200ms Timeline sync
-    schedule(2400, "complete"); // 2400ms Replay available
+    schedule(40, "dim");
+    schedule(80, "evidence");
+    schedule(140, "edges");
+    schedule(200, "camera");
+    schedule(260, "root_cause");
+    schedule(320, "summary");
+    schedule(360, "timeline");
+    schedule(400, "complete");
   };
+
 
   const skipReveal = () => {
     clearTimers();
