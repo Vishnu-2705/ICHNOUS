@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useState } from "react";
-import { Upload, Sparkles } from "lucide-react";
+import { Upload, Play, Sparkles, Loader2 } from "lucide-react";
 import { SourceCodeUploadModal } from "./source-code-upload-modal";
+import { triggerLiveDemo } from "../lib/api";
 
 interface HeaderProps {
   useMockApi?: boolean;
@@ -11,6 +12,21 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({ useMockApi = false, onUploadSuccess }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isTriggeringDemo, setIsTriggeringDemo] = useState(false);
+
+  const handleRunDemo = async (scenario: string) => {
+    setIsTriggeringDemo(true);
+    try {
+      const res = await triggerLiveDemo(scenario);
+      if (onUploadSuccess && res.message) {
+        // Invalidate or notify
+      }
+    } catch (err: unknown) {
+      console.warn("Demo scenario trigger:", err);
+    } finally {
+      setIsTriggeringDemo(false);
+    }
+  };
 
   return (
     <>
@@ -31,7 +47,26 @@ export const Header: React.FC<HeaderProps> = ({ useMockApi = false, onUploadSucc
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          {/* Live Demo Trigger Selector */}
+          <div className="relative inline-block">
+            <select
+              onChange={(e) => {
+                if (e.target.value) {
+                  handleRunDemo(e.target.value);
+                  e.target.value = "";
+                }
+              }}
+              disabled={isTriggeringDemo}
+              className="px-2.5 py-1.5 bg-bg-canvas text-text-primary font-display font-bold text-xs uppercase border border-border-strong shadow-[2px_2px_0px_0px_#171717] hover:translate-y-[1px] hover:translate-x-[1px] hover:shadow-none transition-all cursor-pointer outline-none"
+            >
+              <option value="">⚡ Trigger Live Scenario</option>
+              <option value="retrieval_failure">Retrieval Failure (Stale Policy)</option>
+              <option value="tool_failure">Tool Failure (Truncated Response)</option>
+              <option value="coordination_loop">Coordination Loop (Cyclic Delegation)</option>
+            </select>
+          </div>
+
           <button
             type="button"
             onClick={() => setIsModalOpen(true)}
@@ -70,3 +105,4 @@ export const Header: React.FC<HeaderProps> = ({ useMockApi = false, onUploadSucc
     </>
   );
 };
+

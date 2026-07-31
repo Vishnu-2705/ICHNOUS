@@ -48,15 +48,16 @@ export function CasesSidebar({ selectedCaseId, onSelectCase }: CasesSidebarProps
     });
   }, [cases, searchQuery, activeTab]);
 
-  // Preserve Selection: Clear or select first item if current selection is filtered out
+  // Preserve & Auto Selection: Select first item if no item selected or current selection filtered out
   useEffect(() => {
     if (filteredCases.length > 0) {
       const isCurrentVisible = filteredCases.some((c) => c.id === selectedCaseId);
-      if (!isCurrentVisible && selectedCaseId) {
+      if (!selectedCaseId || !isCurrentVisible) {
         onSelectCase(filteredCases[0].id);
       }
     }
   }, [filteredCases, selectedCaseId, onSelectCase]);
+
 
   // Dynamic Empty State message
   const emptyMessage = useMemo(() => {

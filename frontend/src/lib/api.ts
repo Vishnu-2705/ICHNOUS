@@ -314,3 +314,22 @@ export async function uploadCodeForAnalysis(file: File): Promise<{ session_id: s
     "Failed to analyze uploaded code file"
   );
 }
+
+/**
+ * Trigger live interactive demo scenario stream over WebSocket.
+ */
+export async function triggerLiveDemo(
+  scenario: string
+): Promise<{ status: string; scenario: string; message: string }> {
+  const baseUrl = getBaseUrl();
+  const res = await fetch(`${baseUrl}/sessions/demo/${encodeURIComponent(scenario)}`, {
+    method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+  });
+  return await handleResponse<{ status: string; scenario: string; message: string }>(
+    res,
+    `Failed to trigger live demo scenario '${scenario}'`
+  );
+}
+
+
