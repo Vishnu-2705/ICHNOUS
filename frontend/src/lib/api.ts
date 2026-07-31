@@ -298,21 +298,45 @@ export async function predictGNNRegression(id: string): Promise<GNNPredictionRes
 
 /**
  * Upload code file for real sandbox execution and session creation.
+ * Reads the file as text and sends JSON matching the backend AnalyzeCodeRequest model.
  */
 export async function uploadCodeForAnalysis(file: File): Promise<{ session_id: string; message: string; filename: string }> {
   const baseUrl = getBaseUrl();
-  const formData = new FormData();
-  formData.append("file", file);
+
+  // Read the file content as text
+  const codeText = await file.text();
+
+  // Auto-detect framework from imports in the source code
+  let framework = "custom";
+  const lower = codeText.toLowerCase();
+  if (lower.includes("langgraph") || lower.includes("from langgraph")) {
+    framework = "langgraph";
+  } else if (lower.includes("crewai") || lower.includes("from crewai")) {
+    framework = "crewai";
+  } else if (lower.includes("autogen") || lower.includes("from autogen")) {
+    framework = "autogen";
+  } else if (lower.includes("openai") || lower.includes("from openai")) {
+    framework = "openai";
+  } else if (lower.includes("anthropic") || lower.includes("from anthropic")) {
+    framework = "anthropic";
+  }
 
   const res = await fetch(`${baseUrl}/upload/analyze-code`, {
     method: "POST",
-    body: formData,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      code_text: codeText,
+      framework,
+      session_name: file.name,
+    }),
   });
 
-  return await handleResponse<{ session_id: string; message: string; filename: string }>(
+  const data = await handleResponse<{ session_id: string; message: string; filename?: string }>(
     res,
     "Failed to analyze uploaded code file"
   );
+
+  return { session_id: data.session_id, message: data.message, filename: data.filename || file.name };
 }
 
 /**
