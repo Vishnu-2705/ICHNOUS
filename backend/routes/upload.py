@@ -13,6 +13,8 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 
+import hashlib
+
 try:
     from models.session import EventType, FinishSessionRequest, StartSessionRequest, TraceEvent
     from routes.sessions import get_session_manager
@@ -21,6 +23,9 @@ except ImportError:
     from backend.routes.sessions import get_session_manager
 
 router = APIRouter(prefix="/upload", tags=["Upload & Analyze"])
+
+# In-memory SHA-256 cache for fast upload analysis (< 5ms turnaround)
+_UPLOAD_CACHE: Dict[str, Dict[str, Any]] = {}
 
 
 class AnalyzeCodeRequest(BaseModel):
@@ -188,7 +193,35 @@ async def analyze_source_code(req: AnalyzeCodeRequest) -> Dict[str, Any]:
                 detail=f"Disallowed system command pattern detected: '{pattern}' (FR-3).",
             )
 
+    # Compute SHA-256 hash of source code for instant cache turnaround (<5ms)
+    code_hash = hashlib.sha256(raw_code.encode("utf-8")).hexdigest()
     mgr = get_session_manager()
+
+    if code_hash in _UPLOAD_CACHE:
+        cached_result = dict(_UPLOAD_CACHE[code_hash])
+        # Create fresh session for this upload run so session listing tracks it
+        start_req = StartSessionRequest(
+            name=f"[{req.framework.upper()}] {req.session_name}",
+            description=f"Source code upload analysis for {req.framework} framework (Cached).",
+            tags={"framework": req.framework, "source": "upload", "cache": "hit"},
+        )
+        start_resp = mgr.create_session(start_req)
+        session_id = start_resp.session_id
+
+        # Copy cached session events into new session
+        cached_session_id = cached_result["session_id"]
+        cached_session = mgr.get_session(cached_session_id)
+        if cached_session:
+            for evt in cached_session.events:
+                mgr.add_event(session_id, evt)
+
+        # Copy cached diagnosis result
+        if cached_result.get("diagnosis"):
+            mgr.sessions[session_id].full_diagnosis = cached_result["diagnosis"]
+
+        cached_result["session_id"] = session_id
+        cached_result["cached"] = True
+        return cached_result
 
     # Create session for uploaded run
     start_req = StartSessionRequest(
@@ -298,7 +331,7 @@ async def analyze_source_code(req: AnalyzeCodeRequest) -> Dict[str, Any]:
     # Get updated session
     session = mgr.get_session(session_id)
 
-    return {
+    res_payload = {
         "session_id": session_id,
         "framework": req.framework,
         "raw_code_length": len(raw_code),
@@ -306,4 +339,8 @@ async def analyze_source_code(req: AnalyzeCodeRequest) -> Dict[str, Any]:
         "diagnosis": diagnosis_resp.diagnosis if diagnosis_resp else None,
         "verification": verification_res,
         "event_count": len(session.events) if session else 0,
+        "cached": False,
     }
+
+    _UPLOAD_CACHE[code_hash] = dict(res_payload)
+    return res_payload

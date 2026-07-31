@@ -29,6 +29,38 @@ interface GuidedWorkflowViewProps {
   onUploadFile: (file: File) => void;
 }
 
+function renderStructuredExplanation(explanationText: string) {
+  const parts = explanationText.split("\n\n");
+  if (parts.length >= 2) {
+    return (
+      <div className="flex flex-col gap-3 mb-6 font-sans text-xs leading-relaxed">
+        {parts.map((p, idx) => {
+          let bgClass = "bg-bg-canvas border-border-subtle text-text-primary";
+          if (p.includes("🔍 Root Cause")) {
+            bgClass = "bg-red-950/20 border-red-800/40 text-red-200 font-mono";
+          } else if (p.includes("💡 Technical Analysis")) {
+            bgClass = "bg-amber-950/20 border-amber-800/40 text-amber-200";
+          } else if (p.includes("🛠️ Recommended Fix")) {
+            bgClass = "bg-emerald-950/20 border-emerald-800/40 text-emerald-200 font-medium";
+          }
+
+          return (
+            <div key={idx} className={`p-3.5 border rounded-sm ${bgClass}`}>
+              <div>{p}</div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  return (
+    <p className="text-text-primary text-sm leading-relaxed mb-6 font-sans bg-bg-canvas p-4 border border-border-subtle">
+      {explanationText}
+    </p>
+  );
+}
+
 export const GuidedWorkflowView: React.FC<GuidedWorkflowViewProps> = ({
   currentStage,
   onSelectStage,
@@ -246,10 +278,10 @@ export const GuidedWorkflowView: React.FC<GuidedWorkflowViewProps> = ({
               </h2>
             </div>
 
-            <p className="text-text-primary text-sm leading-relaxed mb-6 font-sans">
-              {diag?.explanation ||
-                "Node execution failed due to an AttributeError when invoking recall(). The class defines self.memory, but the method attempted to return self.memories[-1]."}
-            </p>
+            {renderStructuredExplanation(
+              diag?.explanation ||
+                "🔍 Root Cause: AttributeError — 'FailingAgent' object has no attribute 'memories'.\n\n💡 Technical Analysis: The class constructor initializes 'self.memory = []' in __init__, but method recall() references 'self.memories[-1]'. Accessing an uninitialized attribute name triggers a runtime AttributeError during state retrieval.\n\n🛠️ Recommended Fix: Update recall() to reference 'self.memory[-1]' instead of 'self.memories[-1]'. Do not declare a second 'self.memories = []' attribute in __init__ as that would create duplicate inconsistent state."
+            )}
 
             <div className="mb-6">
               <div className="flex items-center justify-between mb-2">

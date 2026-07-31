@@ -117,8 +117,26 @@ export const DiagnosisCard: React.FC<DiagnosisCardProps> = ({ diagnosis }) => {
         <h4 className="text-xs font-mono font-bold text-slate-400 uppercase tracking-wider">
           Diagnostic Explanation
         </h4>
-        <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 text-slate-200 text-sm leading-relaxed font-sans">
-          {explanation}
+        <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 text-slate-200 text-sm leading-relaxed font-sans flex flex-col gap-3">
+          {explanation.split("\n\n").length >= 2 ? (
+            explanation.split("\n\n").map((part, idx) => {
+              let styleClass = "text-slate-300";
+              if (part.includes("🔍 Root Cause")) {
+                styleClass = "text-rose-400 font-mono font-medium border-l-2 border-rose-500 pl-3 py-0.5";
+              } else if (part.includes("💡 Technical Analysis")) {
+                styleClass = "text-amber-300 border-l-2 border-amber-500 pl-3 py-0.5";
+              } else if (part.includes("🛠️ Recommended Fix")) {
+                styleClass = "text-emerald-300 font-medium border-l-2 border-emerald-500 pl-3 py-0.5";
+              }
+              return (
+                <div key={idx} className={styleClass}>
+                  {part}
+                </div>
+              );
+            })
+          ) : (
+            <div>{explanation}</div>
+          )}
         </div>
       </div>
 

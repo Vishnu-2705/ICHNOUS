@@ -46,7 +46,7 @@ You MUST respond with valid JSON matching this exact schema — no markdown form
   "confidence": <float between 0.0 and 1.0>,
   "root_cause_node_id": "<node ID string>",
   "evidence_node_ids": ["<node_id>", ...],
-  "explanation": "<2-4 sentences explaining the causal chain grounded strictly on telemetry evidence>",
+  "explanation": "🔍 Root Cause: [Exact exception/anomaly]\n\n💡 Technical Analysis: [Why it occurred]\n\n🛠️ Recommended Fix: [Step-by-step developer remediation advice]",
   "suggested_fix": {
     "type": "<one of: prompt_patch | tool_schema_fix | retry_policy | guardrail_addition>",
     "target": "<target component or file to change>",
@@ -332,31 +332,55 @@ def _fallback_diagnosis(
 
     if "memories" in aggregated_text or "attributeerror" in aggregated_text:
         category = "Memory"
-        explanation = "AttributeError: 'FailingAgent' object has no attribute 'memories'. The attribute 'self.memory' is defined in __init__, but 'self.memories' was referenced in recall(). Fix the typo in recall() to reference 'self.memory'."
+        explanation = (
+            "🔍 Root Cause: AttributeError — 'FailingAgent' object has no attribute 'memories'.\n\n"
+            "💡 Technical Analysis: The class constructor initializes 'self.memory = []' in __init__, but method recall() references 'self.memories[-1]'. Accessing an uninitialized attribute name triggers a runtime AttributeError during state retrieval.\n\n"
+            "🛠️ Recommended Fix: Update recall() to reference 'self.memory[-1]' instead of 'self.memories[-1]'. Do not declare a second 'self.memories = []' attribute in __init__ as that would create duplicate inconsistent state."
+        )
         fix = SuggestedFix(
             type="prompt_patch",
             target="failing_agent.py",
             diff="--- a/failing_agent.py\n+++ b/failing_agent.py\n@@ -5,1 +5,1 @@\n-    return self.memories[-1]\n+    return self.memory[-1]",
         )
     elif category == "Retrieval":
+        explanation = (
+            "🔍 Root Cause: Retrieval Pipeline Anomaly — Stale/deprecated policy document retrieved.\n\n"
+            "💡 Technical Analysis: Vector search returned a stale 2023 refund policy document due to missing metadata date filter criteria, leading the LLM to output outdated policy dates.\n\n"
+            "🛠️ Recommended Fix: Add effective date filtering to vector search queries (filter={'effective_year': 2025}) to prevent stale document ingestion."
+        )
         fix = SuggestedFix(
             type="prompt_patch",
             target="search_knowledge_base filter",
             diff="--- a/prompts/retrieval_filter.txt\n+++ b/prompts/retrieval_filter.txt\n@@ -1,3 +1,4 @@\n-search_knowledge_base(query)\n+search_knowledge_base(query, filter={'effective_year': 2025})\n+# Filter out deprecated policy documents before returning search results.",
         )
     elif category == "Tool":
+        explanation = (
+            "🔍 Root Cause: Tool Truncation Failure — Downstream null parsing error.\n\n"
+            "💡 Technical Analysis: The tool execution response was silently truncated at rate limit boundary, returning incomplete JSON payload that caused NullPointerException in downstream parsers.\n\n"
+            "🛠️ Recommended Fix: Add response truncation validation in the tool runner schema validator to detect partial payload outputs."
+        )
         fix = SuggestedFix(
             type="tool_schema_fix",
             target="lint_analyze response schema validator",
             diff="--- a/tools/lint_analyze.py\n+++ b/tools/lint_analyze.py\n@@ -10,3 +10,5 @@\n+if response.metadata.get('response_truncated'):\n+    raise ToolExecutionError('Tool response truncated by rate limit.')",
         )
     elif category == "Coordination":
+        explanation = (
+            "🔍 Root Cause: Coordination Ping-Pong Loop — Infinite agent delegation.\n\n"
+            "💡 Technical Analysis: Sub-agents repeatedly bounced sub-tasks between ResearchAgent and AnalysisAgent without terminating or producing final synthesis.\n\n"
+            "🛠️ Recommended Fix: Implement circular dependency detection in router orchestrator to break delegation loops after 3 iterations."
+        )
         fix = SuggestedFix(
             type="guardrail_addition",
             target="orchestrator loop-detection guardrail",
             diff="--- a/orchestrator/router.py\n+++ b/orchestrator/router.py\n@@ -15,3 +15,5 @@\n+if detect_circular_dependency(agent_history):\n+    return fallback_break_cycle(agent_history)",
         )
     else:
+        explanation = (
+            f"🔍 Root Cause: Execution Anomaly detected at node '{candidate.node_id}' with divergence score {candidate.divergence_score:.2f}.\n\n"
+            f"💡 Technical Analysis: Downstream telemetry deviated from expected baseline during execution phase.\n\n"
+            f"🛠️ Recommended Fix: Review prompt inputs, tool schema contracts, and exception handlers for node '{candidate.node_id}'."
+        )
         fix = SuggestedFix(
             type="prompt_patch",
             target=candidate.node_id,
